@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString, IsEnum, IsNumber, IsOptional } from '@nestjs/class-validator';
-import { StatusPagamento } from 'src/schemas/reserva.schema';
+import { StatusPagamento } from '../pagamento.enums';
 
 export class PagamentoWebhookDto {
   @IsNotEmpty()

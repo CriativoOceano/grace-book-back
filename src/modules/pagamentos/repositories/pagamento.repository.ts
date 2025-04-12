@@ -20,6 +20,7 @@ export class PagamentoRepository implements IPagamentoRepository {
   }
 
   async findByReservaId(reservaId: string): Promise<Pagamento[]> {
+    // Converte string para ObjectId se necessário
     const objectId = this.isValidObjectId(reservaId)
       ? new Types.ObjectId(reservaId)
       : reservaId;

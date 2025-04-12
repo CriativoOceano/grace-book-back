@@ -85,15 +85,16 @@ export class EmailsService {
         html: html,
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
+      // const info = await this.transporter.sendMail(mailOptions);
+      const info = null;
       
       // Se estiver usando Ethereal (ambiente de desenvolvimento)
-      if (info.messageId && info.messageId.includes('ethereal')) {
-        this.logger.log(`Email de teste enviado para ${destinatario}`);
-        this.logger.log(`URL para visualização: ${nodemailer.getTestMessageUrl(info)}`);
-      } else {
-        this.logger.log(`Email enviado para ${destinatario}`);
-      }
+      // if (info.messageId && info.messageId.includes('ethereal')) {
+      //   this.logger.log(`Email de teste enviado para ${destinatario}`);
+      //   this.logger.log(`URL para visualização: ${nodemailer.getTestMessageUrl(info)}`);
+      // } else {
+      //   this.logger.log(`Email enviado para ${destinatario}`);
+      // }
       
       return info;
     } catch (error) {

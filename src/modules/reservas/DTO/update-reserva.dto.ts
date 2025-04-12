@@ -1,6 +1,6 @@
 import { IsOptional, IsString, IsEnum, IsNumber, IsDate, Min, Max } from '@nestjs/class-validator';
 import { Type } from 'class-transformer';
-import { TipoReserva } from 'src/schemas/reserva.schema';
+import { TipoReserva } from '../reserva.enums';
 
 export class UpdateReservaDto {
   @IsOptional()

@@ -1,30 +1,14 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { Document, Model, Schema as MongooseSchema } from 'mongoose';
+import { Document, Model, Schema as MongooseSchema } from 'mongoose';
 import { Usuario } from './usuario.schema';
 import { Pagamento } from './pagamentos.schema';
-
+import { StatusReserva, TipoReserva } from 'src/modules/reservas/reserva.enums';
 
 export type ReservaDocument = Reserva & Document;
 
 export interface ReservaModel extends Model<ReservaDocument> {
   gerarCodigoReserva(): Promise<string>;
   gerarCodigoAcesso(): string;
-}
-
-// Enum para tipos de reserva
-export enum TipoReserva {
-  DIARIA = 'diaria',
-  CHALE = 'chale',
-  BATISMO = 'batismo',
-  COMPLETO = 'completo'
-}
-
-// Enum para status de pagamento
-export enum StatusPagamento {
-  PENDENTE = 'pendente',
-  PAGO = 'pago',
-  CANCELADO = 'cancelado',
-  REEMBOLSADO = 'reembolsado'
 }
 
 // Classe para histórico de alterações na reserva
@@ -53,6 +37,13 @@ export class Reserva {
   @Prop({ required: true, enum: TipoReserva })
   tipo: TipoReserva;
 
+  @Prop({
+    required: true,
+    enum: StatusReserva,
+    default: StatusReserva.PENDENTE,
+  })
+  statusReserva: StatusReserva;
+
   @Prop({ required: true, type: Date })
   dataInicio: Date;
 
@@ -65,11 +56,17 @@ export class Reserva {
   @Prop({ type: Number, min: 0 })
   quantidadeChales: number;
 
-  @Prop({ required: true, type: Number, min: 0 })
+  @Prop({ type: Number, min: 0 })
+  quantidadeDiarias: number;
+
+  @Prop({ required: true, type: Number, min: 1 })
   valorTotal: number;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Pagamento'})
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Pagamento' })
   pagamento: Pagamento;
+
+  @Prop({ type: Object })
+  dadosPagamento: any;
 
   @Prop()
   observacoes: string;
@@ -93,15 +90,19 @@ ReservaSchema.index({ dataInicio: 1, dataFim: 1 });
 ReservaSchema.index({ 'pagamento.status': 1 });
 
 // Método para gerar código único de reserva
-ReservaSchema.statics.gerarCodigoReserva = async function(): Promise<string> {
+ReservaSchema.statics.gerarCodigoReserva = async function (): Promise<string> {
   // Prefixo para o código de reserva
   const prefixo = 'RES';
-  
+
   // Buscar última reserva para obter o último número
-  const ultimaReserva = await this.findOne({}, {}, { sort: { dataCriacao: -1 } });
-  
+  const ultimaReserva = await this.findOne(
+    {},
+    {},
+    { sort: { dataCriacao: -1 } },
+  );
+
   let proximoNumero = 1000; // Número inicial
-  
+
   if (ultimaReserva && ultimaReserva.codigo) {
     // Extrair o número da última reserva
     const match = ultimaReserva.codigo.match(/\d+$/);
@@ -109,42 +110,42 @@ ReservaSchema.statics.gerarCodigoReserva = async function(): Promise<string> {
       proximoNumero = parseInt(match[0], 10) + 1;
     }
   }
-  
+
   // Formatar o código
   return `${prefixo}${proximoNumero}`;
 };
 
 // Método para gerar código de acesso aleatório
-ReservaSchema.statics.gerarCodigoAcesso = function(): string {
+ReservaSchema.statics.gerarCodigoAcesso = function (): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
 
 // Middleware para adicionar entrada no histórico em caso de alteração
-ReservaSchema.pre('findOneAndUpdate', function(next) {
+ReservaSchema.pre('findOneAndUpdate', function (next) {
   // @ts-ignore
   const update = this.getUpdate();
-  
+
   if (!update) return next();
-  
+
   // Adicionar entrada no histórico
   if (!update.push) {
     update.push = {};
   }
-  
+
   if (!update.push.historico) {
     update.push.historico = {
       data: new Date(),
       acao: 'Reserva atualizada',
-      detalhes: 'Detalhes da reserva foram atualizados'
+      detalhes: 'Detalhes da reserva foram atualizados',
     };
   }
-  
+
   // Atualizar data de atualização
   // if (!update.) {
   //   update.$set = {};
   // }
-  
+
   // update.$set.dataAtualizacao = new Date();
-  
+
   next();
 });

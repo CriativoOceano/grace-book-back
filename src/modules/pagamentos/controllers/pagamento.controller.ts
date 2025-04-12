@@ -11,6 +11,8 @@ import {
   } from '@nestjs/common';
 import { PagamentosService } from '../pagamentos.service';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { ModoPagamento } from '../pagamento.enums';
+import { IDadosPagamento } from '../interfaces/dados-pagamento.interface';
   
   @Controller('pagamentos')
   export class PagamentosController {
@@ -26,8 +28,8 @@ import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
   
     @UseGuards(JwtAuthGuard)
     @Post(':reservaId/gerar')
-    async gerarPagamento(@Param('reservaId') reservaId: string) {
-      return this.pagamentosService.criarCobranca(reservaId);
+    async gerarPagamento(@Param('reservaId') reservaId: string, @Body('modoCobranca') dadosPagamento: IDadosPagamento) {
+      return this.pagamentosService.criarCobranca(reservaId, dadosPagamento);
     }
   
     @UseGuards(JwtAuthGuard)

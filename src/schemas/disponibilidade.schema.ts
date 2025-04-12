@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Model } from 'mongoose';
-import { TipoReserva } from './reserva.schema';
+import { TipoReserva } from 'src/modules/reservas/reserva.enums';
 
 export type DisponibilidadeDocument = Disponibilidade & Document;
 

@@ -1,5 +1,5 @@
 import { Exclude, Expose, Transform } from 'class-transformer';
-import { StatusPagamento } from 'src/schemas/reserva.schema';
+import { StatusPagamento } from '../pagamento.enums';
 
 export class PagamentoResponseDto {
   @Expose()

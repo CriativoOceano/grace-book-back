@@ -1,6 +1,6 @@
 import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUrl, Min } from '@nestjs/class-validator';
 import { Type } from 'class-transformer';
-import { StatusPagamento } from 'src/schemas/reserva.schema';
+import { ModoPagamento, StatusPagamento } from '../pagamento.enums';
 
 export class CreatePagamentoDto {
   @IsNotEmpty()
@@ -11,9 +11,17 @@ export class CreatePagamentoDto {
   @IsEnum(StatusPagamento)
   status?: StatusPagamento = StatusPagamento.PENDENTE;
 
+  @IsNotEmpty()
+  @IsEnum(ModoPagamento)
+  modoPagamento: ModoPagamento;
+
   @IsOptional()
   @IsString()
   asaasId?: string;
+
+  @IsOptional()
+  @IsString()
+  idParcela?: string;
 
   @IsNotEmpty()
   @IsNumber()

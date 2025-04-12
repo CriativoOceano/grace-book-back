@@ -15,10 +15,16 @@ import { AdminGuard } from 'src/modules/auth/guards/admin.guard';
 import { CreateReservaDto } from '../DTO/create-reserva.dto';
 import { UpdateReservaDto } from '../DTO/update-reserva.dto';
 import { VerificarDisponibilidadeDto } from '../dto/verificar-disponibilidade.dto';
+import { ReservaRepository } from '../repositories/reserva.repository';
+import { CalculoReservaService } from 'src/modules/shared/services/reservaProcesso/calcular-reserva.service';
 
 @Controller('reservas')
 export class ReservasController {
-  constructor(private readonly reservasService: ReservasService) {}
+  constructor(
+    private readonly reservasService: ReservasService,
+    private readonly calcularReservaService: CalculoReservaService,
+    private readonly reservaRepository: ReservaRepository,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -26,27 +32,36 @@ export class ReservasController {
     return this.reservasService.create(createReservaDto, req.user.id);
   }
 
+  @Post('cotar')
+  @UseGuards(JwtAuthGuard)
+  cotarReserva(@Body() createReservaDto: CreateReservaDto, @Request() req) {
+    return this.calcularReservaService.getValorReserva(createReservaDto);
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, AdminGuard)
   findAll() {
-    return this.reservasService.findAll();
+    return this.reservaRepository.findAll();
   }
 
   @Get('minhas')
   @UseGuards(JwtAuthGuard)
   findByUser(@Request() req) {
-    return this.reservasService.findByUser(req.user.id);
+    return this.reservaRepository.findByUser(req.user.id);
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async findById(@Param('id') id: string, @Request() req) {
-    const reserva = await this.reservasService.findById(id);
+    const reserva = await this.reservaRepository.findById(id);
 
-    // Verificar se o usuário tem acesso a esta reserva
-    if (reserva.usuario.toString() !== req.user.id && !req.user.isAdmin) {
+    if (!reserva) {
+      throw new BadRequestException(`Reserva não encontrada`);
+    }
+
+    if (reserva.usuario['_id'].toString() !== req.user.id && !req.user.admin) {
       throw new BadRequestException(
-        'Você não tem permissão para acessar esta reserva',
+        `Você não tem permissão para acessar esta reserva`,
       );
     }
 
@@ -55,7 +70,7 @@ export class ReservasController {
 
   @Get('codigo/:codigo')
   findByCodigo(@Param('codigo') codigo: string) {
-    return this.reservasService.findByCodigo(codigo);
+    return this.reservaRepository.findByCodigo(codigo);
   }
 
   @Patch(':id')

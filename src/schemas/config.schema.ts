@@ -31,6 +31,9 @@ export class Configuracao {
   @Prop({ required: true, type: Number, min: 1, default: 4 })
   quantidadeMaximaChales: number;
 
+  @Prop({ required: true, type: Number, min: 1, default: 200 })
+  qtdMaxPessoas: number;
+
   @Prop({ required: true, type: Number, min: 0, default: 2 })
   diasAntecedenciaMinima: number;
 
@@ -73,6 +76,7 @@ ConfiguracaoSchema.statics.getConfig = async function() {
     precoBatismo: 300,
     quantidadeMaximaChales: 4,
     diasAntecedenciaMinima: 2,
+    qtdMaxPessoas: 200,
     emailRemetente: 'reservas@fontedagraca.com.br',
     manutencao: false,
     asaasApiKey: '',

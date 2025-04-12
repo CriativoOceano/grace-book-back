@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { IReservaRepository } from './interfaces/reserva-repository.interface';
-import { Reserva, ReservaDocument } from 'src/schemas/reserva.schema';
+import { HistoricoReserva, Reserva, ReservaDocument } from 'src/schemas/reserva.schema';
 
 @Injectable()
 export class ReservaRepository implements IReservaRepository {
@@ -11,16 +11,24 @@ export class ReservaRepository implements IReservaRepository {
   ) {}
 
   async findAll(): Promise<Reserva[]> {
-    return this.reservaModel.find().populate('usuario').exec();
+    return this.reservaModel
+      .find()
+      .populate('usuario')
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   async findByUser(userId: string): Promise<ReservaDocument[]> {
-    return this.reservaModel.find({ usuario: userId }).exec();
+    return this.reservaModel
+      .find({ usuario: userId })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
-  async findById(id: string): Promise<ReservaDocument> {
+  async findById(id: string, options = {}): Promise<ReservaDocument> {
     const reserva = await this.reservaModel
       .findById(id)
+      .sort({ createdAt: -1 })
       .populate('usuario')
       .exec();
 
@@ -49,14 +57,12 @@ export class ReservaRepository implements IReservaRepository {
     const dataConsulta = new Date(data);
     dataConsulta.setHours(0, 0, 0, 0);
 
-    return this.reservaModel
-      .find(data)
-      .populate('usuario')
-      .exec();
+    return this.reservaModel.find(data).populate('usuario').exec();
   }
 
-  createReserva(data: Partial<Reserva>): Promise<Reserva> {
-    const reserva = new this.reservaModel(data);
+  createReserva(data: Partial<Reserva>, options = {}): Promise<Reserva> {
+    const reserva = new this.reservaModel(data, options);
+    console.log(reserva); 
     return reserva.save();
   }
 
@@ -73,11 +79,28 @@ export class ReservaRepository implements IReservaRepository {
   updateReserva(
     reservaId: string,
     dto: Partial<Reserva>,
+    options = {}
   ): Promise<Reserva | null> {
     return this.reservaModel
-      .findByIdAndUpdate(reservaId, dto, { new: true })
+      .findByIdAndUpdate(reservaId, dto, { new: true, ...options })
       .populate('usuario')
       .exec();
+  }
+
+  getHistorico(reservaId: string): Promise<HistoricoReserva[]> {
+    const historico = this.findById(reservaId)
+      .then((reserva) => {
+        if (!reserva) {
+          throw new NotFoundException(
+            `Reserva com ID "${reservaId}" não encontrada`,
+          );
+        }
+        return reserva.historico;
+      })
+      .catch((error) => {
+        throw new NotFoundException( `Erro ao buscar histórico: ${error.message}`);
+      });
+    return historico;
   }
 
   async verificarDisponibilidade(

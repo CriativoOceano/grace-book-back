@@ -30,6 +30,11 @@ export class UpdateConfiguracaoDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
+  qtdMaxPessoas?: number;
+
+  @IsOptional()
+  @IsNumber()
   @Min(1)
   quantidadeMaximaChales?: number;
 

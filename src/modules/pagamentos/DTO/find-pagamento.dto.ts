@@ -1,5 +1,5 @@
 import { IsOptional, IsString, IsEnum, IsDateString } from '@nestjs/class-validator';
-import { StatusPagamento } from 'src/schemas/reserva.schema';
+import { StatusPagamento } from '../pagamento.enums';
 
 export class FindPagamentoDto {
   @IsOptional()
