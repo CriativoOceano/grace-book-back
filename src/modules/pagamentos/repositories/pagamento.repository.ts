@@ -34,12 +34,14 @@ export class PagamentoRepository implements IPagamentoRepository {
   }
 
   async updatePagamento(
-    id: string,
-    data: Partial<Pagamento>,
-  ): Promise<Pagamento | null> {
-    return this.pagamentoModel
-      .findByIdAndUpdate(id, data, { new: true })
-      .exec();
+    pagamentoId: string, 
+    dadosAtualizacao: Partial<Pagamento>
+  ): Promise<PagamentoDocument> {
+    return this.pagamentoModel.findByIdAndUpdate(
+      pagamentoId,
+      { $set: dadosAtualizacao },
+      { new: true }
+    ).exec();
   }
 
   async cancelPagamento(id: string): Promise<boolean> {
@@ -67,4 +69,9 @@ export class PagamentoRepository implements IPagamentoRepository {
   private isValidObjectId(id: string): boolean {
     return Types.ObjectId.isValid(id);
   }
+
+  // Método para encontrar pagamento pelo ID externo (checkoutId do Asaas)
+async findByExternalId(externalId: string): Promise<PagamentoDocument | null> {
+  return this.pagamentoModel.findOne({ 'detalhes.id': externalId }).exec();
+}
 }

@@ -34,6 +34,13 @@ export class Reserva {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Usuario', required: true })
   usuario: Usuario;
 
+  // Adicionar campos explícitos para email e nome do usuário (redundância controlada)
+  @Prop({ required: true })
+  usuarioEmail: string;
+
+  @Prop({ required: true })
+  usuarioNome: string;
+
   @Prop({ required: true, enum: TipoReserva })
   tipo: TipoReserva;
 
@@ -86,8 +93,44 @@ export const ReservaSchema = SchemaFactory.createForClass(Reserva);
 // Índices para melhorar performance de consultas
 ReservaSchema.index({ codigo: 1 }, { unique: true });
 ReservaSchema.index({ usuario: 1 });
+ReservaSchema.index({ usuarioEmail: 1 }); // Índice não-único para o email
 ReservaSchema.index({ dataInicio: 1, dataFim: 1 });
 ReservaSchema.index({ 'pagamento.status': 1 });
+
+// Middleware para garantir que os campos de usuário sejam preenchidos
+ReservaSchema.pre('save', async function(next) {
+  const reserva = this as ReservaDocument;
+  if (!reserva.usuario) {
+    return next(new Error('Usuário é obrigatório para criar uma reserva'));
+  }
+  
+  try {
+    // Se o usuário for apenas um ID, buscar os dados completos
+    if (typeof reserva.usuario === 'string' || reserva.usuario instanceof MongooseSchema.Types.ObjectId) {
+      const Usuario = this.model('Usuario');
+      const usuarioCompleto: Usuario = await Usuario.findById(reserva.usuario);
+      
+      if (!usuarioCompleto) {
+        return next(new Error('Usuário não encontrado'));
+      }
+      
+      reserva.usuarioEmail = usuarioCompleto.email;
+      reserva.usuarioNome = usuarioCompleto.nome;
+    } else if (typeof reserva.usuario === 'object') {
+      // Se já temos o objeto usuário, extrair os dados
+      if (!reserva.usuario.email || !reserva.usuario.nome) {
+        return next(new Error('Dados do usuário incompletos'));
+      }
+      
+      reserva.usuarioEmail = reserva.usuario.email;
+      reserva.usuarioNome = reserva.usuario.nome;
+    }
+    
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Método para gerar código único de reserva
 ReservaSchema.statics.gerarCodigoReserva = async function (): Promise<string> {
@@ -139,13 +182,6 @@ ReservaSchema.pre('findOneAndUpdate', function (next) {
       detalhes: 'Detalhes da reserva foram atualizados',
     };
   }
-
-  // Atualizar data de atualização
-  // if (!update.) {
-  //   update.$set = {};
-  // }
-
-  // update.$set.dataAtualizacao = new Date();
 
   next();
 });

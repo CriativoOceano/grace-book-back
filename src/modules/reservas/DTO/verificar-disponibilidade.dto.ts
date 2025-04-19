@@ -6,7 +6,12 @@ export class VerificarDisponibilidadeDto {
   @IsNotEmpty()
   @Type(() => Date)
   @IsDate()
-  data: Date;
+  dataInicio: Date;
+
+  @IsNotEmpty()
+  @Type(() => Date)
+  @IsDate()
+  dataFim: Date;
 
   @IsNotEmpty()
   @IsEnum(TipoReserva)

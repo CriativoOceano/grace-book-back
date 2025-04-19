@@ -80,7 +80,7 @@ export class ReservasController {
     @Body() updateReservaDto: UpdateReservaDto,
     @Request() req,
   ) {
-    return this.reservasService.update(id, updateReservaDto, req.user.id);
+    // return this.reservasService.update(id, updateReservaDto, req.user.id);
   }
 
   @Post(':id/cancelar')
@@ -90,7 +90,7 @@ export class ReservasController {
     @Body('motivo') motivo: string,
     @Request() req,
   ) {
-    return this.reservasService.cancelar(id, req.user.id, motivo);
+    // return this.reservasService.cancelar(id, req.user.id, motivo);
   }
 
   @Post('disponibilidade')

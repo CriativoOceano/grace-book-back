@@ -45,6 +45,7 @@ export class ReservaProcessoService {
       dadosReserva.dataInicio,
       dadosReserva.dataFim,
     );
+
     const reserva = await this.reservaRepository.createReserva(dadosReserva);
 
     const pagamento = await this.pagamentoService.criarCobranca(reserva['_id'].toString(), dadosReserva.dadosPagamento);
@@ -120,8 +121,7 @@ export class ReservaProcessoService {
       // Gerar um novo link de checkout
       const novoCheckout = await this.pagamentoService.criarCobranca(
         reservaId,
-        dadosPagamento,
-        { session },
+        dadosPagamento
       );
 
       // Atualizar a reserva com o novo link

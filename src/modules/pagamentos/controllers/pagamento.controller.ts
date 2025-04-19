@@ -42,6 +42,7 @@ import { IDadosPagamento } from '../interfaces/dados-pagamento.interface';
     @Post('webhook')
     @HttpCode(HttpStatus.OK)
     async receberWebhook(@Body() payload: any) {
+      console.log('webhook', payload)
       await this.pagamentosService.processarWebhook(payload);
       return { received: true };
     }

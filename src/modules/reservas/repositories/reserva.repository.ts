@@ -2,7 +2,12 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { IReservaRepository } from './interfaces/reserva-repository.interface';
-import { HistoricoReserva, Reserva, ReservaDocument } from 'src/schemas/reserva.schema';
+import {
+  HistoricoReserva,
+  Reserva,
+  ReservaDocument,
+} from 'src/schemas/reserva.schema';
+import { StatusReserva } from '../reserva.enums';
 
 @Injectable()
 export class ReservaRepository implements IReservaRepository {
@@ -62,7 +67,7 @@ export class ReservaRepository implements IReservaRepository {
 
   createReserva(data: Partial<Reserva>, options = {}): Promise<Reserva> {
     const reserva = new this.reservaModel(data, options);
-    console.log(reserva); 
+    console.log(reserva.usuario);
     return reserva.save();
   }
 
@@ -79,7 +84,7 @@ export class ReservaRepository implements IReservaRepository {
   updateReserva(
     reservaId: string,
     dto: Partial<Reserva>,
-    options = {}
+    options = {},
   ): Promise<Reserva | null> {
     return this.reservaModel
       .findByIdAndUpdate(reservaId, dto, { new: true, ...options })
@@ -87,6 +92,35 @@ export class ReservaRepository implements IReservaRepository {
       .exec();
   }
 
+  async findByPagamentoId(
+    pagamentoId: string,
+  ): Promise<ReservaDocument | null> {
+    return this.reservaModel.findOne({ pagamento: pagamentoId }).exec();
+  }
+  
+  // Método para atualizar o status de uma reserva
+  async atualizarStatus(
+    reservaId: string,
+    novoStatus: StatusReserva,
+    detalhes: string,
+  ): Promise<ReservaDocument> {
+    const novaEntradaHistorico = {
+      data: new Date(),
+      acao: `Status alterado para ${novoStatus}`,
+      detalhes,
+    };
+
+    return this.reservaModel
+      .findByIdAndUpdate(
+        reservaId,
+        {
+          $set: { statusReserva: novoStatus },
+          $push: { historico: novaEntradaHistorico },
+        },
+        { new: true },
+      )
+      .exec();
+  }
   getHistorico(reservaId: string): Promise<HistoricoReserva[]> {
     const historico = this.findById(reservaId)
       .then((reserva) => {
@@ -98,7 +132,9 @@ export class ReservaRepository implements IReservaRepository {
         return reserva.historico;
       })
       .catch((error) => {
-        throw new NotFoundException( `Erro ao buscar histórico: ${error.message}`);
+        throw new NotFoundException(
+          `Erro ao buscar histórico: ${error.message}`,
+        );
       });
     return historico;
   }

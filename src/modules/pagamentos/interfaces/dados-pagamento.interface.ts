@@ -4,5 +4,7 @@ export interface IDadosPagamento {
   modoPagamento: ModoPagamento;
   tipoPagamento: TipoPagamento;
   valorTotal: number;
+  valorDiaria: number;
+  valorDiariaComChale: number;
   parcelas?: number;
 }

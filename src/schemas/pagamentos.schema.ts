@@ -16,7 +16,7 @@ export class Pagamento {
   @Prop({ required: true, enum: ModoPagamento})
   modoPagamento: ModoPagamento;
 
-  @Prop({ type: String })
+  @Prop({ type: String, required: true})
   asaasPagamentoId: string;
 
   @Prop({type: Number, min: 1 })
@@ -25,13 +25,16 @@ export class Pagamento {
   @Prop({type: Number})
   qtdParcelas: number;
 
-  @Prop({ type: Date })
+  @Prop({ type: Date})
   dataPagamento: Date;
 
   @Prop()
   comprovante: string;
 
-  @Prop()
+  @Prop({ type: Object })
+  detalhes: any;
+
+  @Prop({required: true})
   linkPagamento: string;
 }
 
@@ -40,3 +43,5 @@ export const PagamentoSchema = SchemaFactory.createForClass(Pagamento);
 PagamentoSchema.index({ reservaId: 1 });
 PagamentoSchema.index({ status: 1 });
 PagamentoSchema.index({ createdAt: -1 });
+PagamentoSchema.index({ externalId: 1 }, { unique: true, sparse: true });
+PagamentoSchema.index({ 'detalhes.id': 1 }, { sparse: true });

@@ -7,7 +7,7 @@ export enum TipoReserva {
 }
 
 export enum StatusReserva {
-  ATIVA = 'ATIVA',
+  CONFIRMADA = 'CONFIRMADA',
   CANCELADA = 'CANCELADA',
   FINALIZADA = 'FINALIZADA',
   PENDENTE = 'PENDENTE_PAGAMENTO',

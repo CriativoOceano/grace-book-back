@@ -22,6 +22,7 @@ import { IDadosPagamento } from './interfaces/dados-pagamento.interface';
 import { EmailsService } from '../emails/email.service';
 import { CalculoReservaService } from '../shared/services/reservaProcesso/calcular-reserva.service';
 import { CreateReservaDto } from '../reservas/dto/create-reserva.dto';
+import { StatusReserva } from '../reservas/reserva.enums';
 @Injectable()
 export class PagamentosService {
   private readonly logger = new Logger(PagamentosService.name);
@@ -116,7 +117,7 @@ export class PagamentosService {
       const usuario: Usuario = await this.usuariosService.findByCpf(
         reserva.usuario.cpf,
       );
-
+      
       if (reserva.pagamento && reserva.pagamento.asaasPagamentoId) {
         const statusPagamento = await this.consultarStatusCobranca(reservaId);
 
@@ -148,13 +149,15 @@ export class PagamentosService {
       // Calcular valor da reserva
       const valorTotaldaReserva =
         await this.calculoReservaService.getValorReserva(reservaData);
-
-      dadosPagamento.valorTotal = valorTotaldaReserva;
+      // console.log(valorTotaldaReserva); return
+      dadosPagamento.valorDiaria = valorTotaldaReserva.valorDiaria;
+      dadosPagamento.valorDiariaComChale = valorTotaldaReserva.valorDiariaComChale;
+      dadosPagamento.valorTotal = valorTotaldaReserva.valorTotal;
 
       const cobranca = await firstValueFrom(
         this.httpService.post(
           `${this.apiUrl}/checkouts`,
-          this.buildDadosPagamento(reserva, clienteId, dadosPagamento),
+          this.buildDadosPagamento(reserva, dadosPagamento),
           {
             headers: {
               access_token: this.apiKey,
@@ -162,6 +165,8 @@ export class PagamentosService {
           },
         ),
       );
+
+      console.log('teste cobranca',cobranca);
       this.logger.log(`Cobranca criada com sucesso: ${cobranca.data}`);
       const cobrancaCriada = await this.pagamentoRepository.createPagamento({
         reservaId: reserva,
@@ -171,6 +176,7 @@ export class PagamentosService {
         linkPagamento: cobranca.data.link,
         modoPagamento: dadosPagamento.modoPagamento,
         qtdParcelas: dadosPagamento.parcelas,
+        detalhes: cobranca.data
       });
 
       // Enviar e-mail com link de pagamento
@@ -281,64 +287,104 @@ export class PagamentosService {
   async processarWebhook(payload: any): Promise<void> {
     try {
       this.logger.log(`Webhook recebido: ${JSON.stringify(payload)}`);
-
-      // Validar payload
-      if (
-        !payload.event ||
-        !payload.payment ||
-        !payload.payment.externalReference
-      ) {
+  
+      // Validar payload para o formato de checkout
+      if (!payload.event || !payload.checkout) {
         throw new Error('Payload de webhook inválido');
       }
-
+      
+      // Extrair o ID do checkout
+      const checkoutId = payload.checkout.id;
+      if (!checkoutId) {
+        throw new Error('ID de checkout não encontrado no payload');
+      }
+  
       // Mapear evento para status interno
       let status: StatusPagamento;
-      let dataPagamento: string | null = null;
-
+      let dataPagamento: Date | undefined = new Date();
+  
       switch (payload.event) {
-        case 'PAYMENT_RECEIVED':
-        case 'PAYMENT_CONFIRMED':
+        case 'CHECKOUT_PAID':
           status = StatusPagamento.PAGO;
-          dataPagamento = payload.payment.paymentDate;
+          // Data do pagamento é a data atual ou a data do evento
+          dataPagamento = payload.dateCreated 
+            ? new Date(payload.dateCreated) 
+            : new Date();
           break;
-
-        case 'PAYMENT_OVERDUE':
+  
+        case 'CHECKOUT_EXPIRED':
           status = StatusPagamento.PENDENTE;
           break;
-
-        case 'PAYMENT_DELETED':
-        case 'PAYMENT_REFUNDED':
+  
+        case 'CHECKOUT_CANCELED':
           status = StatusPagamento.CANCELADO;
           break;
-
+  
         default:
           this.logger.log(`Evento desconhecido: ${payload.event}`);
           return;
       }
-
-      // Buscar reserva pelo código externo
-      const codigoReserva = payload.payment.externalReference;
-      const reserva = await this.reservaRepository.findByCodigo(codigoReserva);
-
-      this.pagamentoRepository.updatePagamento(reserva._id.toString(), {
+  
+      // Buscar pagamento pelo ID do checkout
+      const pagamento = await this.pagamentoRepository.findByExternalId(checkoutId);
+      console.log(pagamento);
+      if (!pagamento) {
+        throw new Error(`Pagamento não encontrado para o checkoutId: ${checkoutId}`);
+      }
+      
+      // Buscar reserva pelo ID do pagamento
+      const reserva = await this.reservaRepository.findByPagamentoId(pagamento._id.toString());
+      
+      if (!reserva) {
+        throw new Error(`Reserva não encontrada para o pagamentoId: ${pagamento._id}`);
+      }
+  
+      // Atualizar status do pagamento
+      await this.pagamentoRepository.updatePagamento(pagamento._id.toString(), {
         status,
-        dataPagamento: dataPagamento ? new Date(dataPagamento) : undefined,
+        dataPagamento,
+        detalhes: payload
       });
-
+  
+      // Atualizar status da reserva
+      if (status === StatusPagamento.PAGO) {
+        await this.reservaRepository.atualizarStatus(
+          reserva._id.toString(),
+          StatusReserva.CONFIRMADA,
+          'Pagamento confirmado via Asaas'
+        );
+      } else if (status === StatusPagamento.CANCELADO) {
+        await this.reservaRepository.atualizarStatus(
+          reserva._id.toString(),
+          StatusReserva.CANCELADA,
+          'Pagamento cancelado via Asaas'
+        );
+      }
+  
       // Enviar notificação por email
-      const usuario = await this.usuariosService.findByCpf(reserva.usuario.cpf);
-      await this.emailsService.enviarNotificacaoPagamento(
-        usuario.email,
-        usuario.nome,
-        reserva.codigo,
-        status === StatusPagamento.PAGO
-          ? 'pago'
-          : status === StatusPagamento.CANCELADO
-            ? 'cancelado'
-            : 'pendente',
-      );
+      try {
+        await this.emailsService.enviarNotificacaoPagamento(
+          reserva.usuarioEmail, // Usando o email armazenado diretamente na reserva
+          reserva.usuarioNome,  // Usando o nome armazenado diretamente na reserva
+          reserva.codigo,
+          status === StatusPagamento.PAGO
+            ? 'pago'
+            : status === StatusPagamento.CANCELADO
+              ? 'cancelado'
+              : 'pendente',
+        );
+      } catch (emailError) {
+        // Apenas registramos o erro de email, mas não interrompemos o processamento
+        this.logger.error(`Erro ao enviar email: ${emailError.message}`);
+      }
+      
+      this.logger.log(`Webhook processado com sucesso: ${reserva.codigo}, status: ${status}`);
     } catch (error) {
       this.logger.error(`Erro ao processar webhook: ${error.message}`);
+      // Registrar o erro detalhado, incluindo o payload
+      this.logger.error(`Payload: ${JSON.stringify(payload)}`);
+      this.logger.error(`Stack trace: ${error.stack}`);
+      
       throw new HttpException(
         'Erro ao processar webhook de pagamento',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -371,7 +417,6 @@ export class PagamentosService {
 
   private buildDadosPagamento(
     reserva: Reserva,
-    clienteId: string,
     dadosPagamento: IDadosPagamento,
   ) {
     const dataVencimento = new Date();
@@ -383,39 +428,25 @@ export class PagamentosService {
         return {
           billingTypes: [dadosPagamento.modoPagamento],
           chargeTypes: ['DETACHED'],
-          minutesToExpire: 60,
-          callback: {
-            cancelUrl: 'https://meusite.com/cancelado',
-            expiredUrl: 'https://meusite.com/expirado',
-            successUrl: 'https://meusite.com/sucesso',
-          },
-          items: [
-            {
-              name: 'Diárias',
-              description: 'Diárias reservadas',
-              quantity: reserva.quantidadeDiarias,
-              value: dadosPagamento.valorTotal,
-            },
-          ],
-        };
-      case ModoPagamento.CARTAO:
-        return {
-          billingTypes: [dadosPagamento.modoPagamento],
-          chargeTypes: ['DETACHED', dadosPagamento.tipoPagamento],
           minutesToExpire: 15,
           callback: {
             cancelUrl: 'https://meusite.com/cancelado',
             expiredUrl: 'https://meusite.com/expirado',
             successUrl: 'https://meusite.com/sucesso',
           },
-          items: [
-            {
-              name: 'Diárias',
-              description: 'Diárias reservadas',
-              quantity: reserva.quantidadeDiarias,
-              value: dadosPagamento.valorTotal,
-            },
-          ],
+          items: this.gerarItens(reserva, dadosPagamento),
+        };
+      case ModoPagamento.CARTAO:
+        return {
+          billingTypes: [dadosPagamento.modoPagamento],
+          chargeTypes: ['DETACHED'],
+          minutesToExpire: 15,
+          callback: {
+            cancelUrl: 'https://meusite.com/cancelado',
+            expiredUrl: 'https://meusite.com/expirado',
+            successUrl: 'https://meusite.com/sucesso',
+          },
+          items: this.gerarItens(reserva, dadosPagamento),
         };
       default:
         'Modo de pagamento inválido';
@@ -424,6 +455,52 @@ export class PagamentosService {
           HttpStatus.BAD_REQUEST,
         );
     }
+  }
+
+  private gerarItens(reserva: Reserva, dadosPagamento: IDadosPagamento) {
+    const itens = [];
+
+    switch (reserva.tipo) {
+      case 'diaria':
+        // Item base para a diária
+        itens.push({
+          name: 'Diária',
+          description: `Diária para ${reserva.quantidadePessoas} pessoas`,
+          quantity: reserva.quantidadeDiarias,
+          value: dadosPagamento.valorDiaria,
+        });
+
+        // Se tiver chalés adicionais, mostrar como item separado
+        if (reserva.quantidadeChales && reserva.quantidadeChales > 0) {
+          itens.push({
+            name: 'Chalés',
+            description: `${reserva.quantidadeChales} chalé(s) adicional(is)`,
+            quantity: reserva.quantidadeDiarias, // Também multiplicado pelo número de diárias
+            value:
+              dadosPagamento.valorDiariaComChale - dadosPagamento.valorDiaria, // Valor do chalé por dia
+          });
+        }
+        break;
+
+      case 'chale':
+        itens.push({
+          name: 'Chalés',
+          description: `${reserva.quantidadeChales} chalé(s) por ${reserva.quantidadeDiarias} dia(s)`,
+          quantity: reserva.quantidadeChales, // Já incluímos o cálculo na description
+          value: dadosPagamento.valorDiaria,
+        });
+        break;
+
+      case 'batismo':
+        itens.push({
+          name: 'Batismo',
+          description: `Serviço de batismo para ${reserva.quantidadePessoas} pessoas`,
+          quantity: 1,
+          value: dadosPagamento.valorTotal,
+        });
+        break;
+    }
+    return itens;
   }
 
   async getQtdDias(dataInicio: Date, dataFim: Date): Promise<number> {
