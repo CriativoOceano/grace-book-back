@@ -32,9 +32,26 @@ export class ReservasController {
     return this.reservasService.create(createReservaDto, req.user.id);
   }
 
+  @Post('publico')
+  createPublico(@Body() createReservaDto: CreateReservaDto) {
+    console.log('🔍 CONTROLLER - Dados recebidos:', JSON.stringify(createReservaDto, null, 2));
+    console.log('🔍 CONTROLLER - dadosHospede:', JSON.stringify(createReservaDto.dadosHospede, null, 2));
+    return this.reservasService.createPublico(createReservaDto);
+  }
+
+  @Post('publico-debug')
+  createPublicoDebug(@Body() createReservaDto: CreateReservaDto) {
+    return this.reservasService.createPublicoDebug(createReservaDto);
+  }
+
   @Post('cotar')
   @UseGuards(JwtAuthGuard)
   cotarReserva(@Body() createReservaDto: CreateReservaDto, @Request() req) {
+    return this.calcularReservaService.getValorReserva(createReservaDto);
+  }
+
+  @Post('cotar-publico')
+  cotarReservaPublico(@Body() createReservaDto: CreateReservaDto) {
     return this.calcularReservaService.getValorReserva(createReservaDto);
   }
 
@@ -50,6 +67,11 @@ export class ReservasController {
     return this.reservaRepository.findByUser(req.user.id);
   }
 
+  @Get('confirmadas')
+  getReservasConfirmadas() {
+    return this.reservaRepository.findReservasConfirmadas();
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async findById(@Param('id') id: string, @Request() req) {
@@ -59,7 +81,7 @@ export class ReservasController {
       throw new BadRequestException(`Reserva não encontrada`);
     }
 
-    if (reserva.usuario['_id'].toString() !== req.user.id && !req.user.admin) {
+    if (reserva.usuario['_id'].toString() !== req.user.id && !req.user.isAdmin) {
       throw new BadRequestException(
         `Você não tem permissão para acessar esta reserva`,
       );
@@ -74,7 +96,7 @@ export class ReservasController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   update(
     @Param('id') id: string,
     @Body() updateReservaDto: UpdateReservaDto,
@@ -94,7 +116,11 @@ export class ReservasController {
   }
 
   @Post('disponibilidade')
-  verificarDisponibilidade(@Body() verificarDto: VerificarDisponibilidadeDto) {
-    return this.reservasService.verificarDisponibilidade(verificarDto);
+  async verificarDisponibilidade(@Body() verificarDto: VerificarDisponibilidadeDto) {
+    const disponivel = await this.reservasService.verificarDisponibilidade(verificarDto);
+    return {
+      disponivel,
+      mensagem: disponivel ? 'Período disponível!' : 'Período indisponível. Tente outras datas.'
+    };
   }
 }

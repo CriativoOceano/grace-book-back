@@ -7,6 +7,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { CreateReservaDto } from './dto/create-reserva.dto';
 import { UpdateReservaDto } from './dto/update-reserva.dto';
 import { UsuariosService } from '../usuarios/usuarios.service';
@@ -32,86 +33,178 @@ export class ReservasService {
     private readonly calculoReservaService: CalculoReservaService,
   ) {}
 
+  /**
+   * Executa operações de criação de reserva com transação para garantir consistência
+   */
+  private async executeWithTransaction<T>(
+    operation: (session: any) => Promise<T>
+  ): Promise<T> {
+    const session = await this.reservaModel.db.startSession();
+    
+    try {
+      let result: T;
+      await session.withTransaction(async () => {
+        result = await operation(session);
+      });
+      return result;
+    } catch (error) {
+      this.logger.error(`Erro na transação: ${error.message}`);
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /**
+   * 🔍 VALIDAÇÃO DE CÁLCULO E DISPONIBILIDADE ANTES DE SALVAR
+   * Valida apenas cálculo e disponibilidade antes de criar reserva ou pagamento
+   */
+  private async validarReservaCompleta(
+    createReservaDto: CreateReservaDto,
+    userId: string,
+  ): Promise<void> {
+    this.logger.log(`🔍 Iniciando validação de cálculo e disponibilidade`);
+
+    try {
+      // 1. VALIDAR E RECALCULAR DADOS DO FRONTEND
+      const { dadosValidados } = await this.validarERecalcularDadosFrontend(
+        createReservaDto,
+        userId
+      );
+
+      // 2. VALIDAR CÁLCULO DE VALORES
+      const valorCalculadoBackend = await this.calculoReservaService.getValorReserva(dadosValidados);
+      
+      // Comparar com o valor enviado pelo frontend
+      const valorFrontend = createReservaDto.dadosPagamento?.valorTotal || 0;
+      const diferencaPercentual = Math.abs(valorCalculadoBackend.valorTotal - valorFrontend) / valorFrontend * 100;
+      
+      if (diferencaPercentual > 5) { // Tolerância de 5%
+        this.logger.error(`❌ Diferença significativa no cálculo: Frontend=${valorFrontend}, Backend=${valorCalculadoBackend.valorTotal}`);
+        throw new BadRequestException(
+          `Valor calculado incorretamente. Valor esperado: R$ ${valorCalculadoBackend.valorTotal.toFixed(2)}. ` +
+          `Recarregue a página e tente novamente.`
+        );
+      }
+
+      // 3. VALIDAR DISPONIBILIDADE
+      const disponibilidade = await this.verificarDisponibilidade({
+        dataInicio: dadosValidados.dataInicio,
+        dataFim: dadosValidados.dataFim,
+        tipo: dadosValidados.tipo,
+        quantidadeChales: dadosValidados.quantidadeChales,
+      });
+
+      if (!disponibilidade) {
+        this.logger.error(`❌ Indisponibilidade detectada para: ${JSON.stringify({
+          dataInicio: dadosValidados.dataInicio,
+          dataFim: dadosValidados.dataFim,
+          tipo: dadosValidados.tipo,
+          quantidadeChales: dadosValidados.quantidadeChales,
+        })}`);
+        
+        // Mensagens específicas para cada caso de indisponibilidade
+        const dataInicio = new Date(dadosValidados.dataInicio);
+        const dataFim = new Date(dadosValidados.dataFim);
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        
+        if (dataInicio < hoje) {
+          throw new BadRequestException('Não é possível fazer reservas para datas passadas.');
+        }
+        
+        if (dataInicio.getTime() === dataFim.getTime()) {
+          throw new BadRequestException('A data de início deve ser diferente da data de fim.');
+        }
+        
+        if (dadosValidados.quantidadeChales > 0) {
+          throw new BadRequestException(
+            `Não há chalés disponíveis para o período selecionado. ` +
+            `Tente selecionar um período diferente ou reduzir a quantidade de chalés.`
+          );
+        }
+        
+        throw new BadRequestException(
+          `Não há disponibilidade para o período selecionado (${dataInicio.toLocaleDateString('pt-BR')} a ${dataFim.toLocaleDateString('pt-BR')}). ` +
+          `Tente selecionar outro período.`
+        );
+      }
+
+      this.logger.log(`✅ Validação de cálculo e disponibilidade bem-sucedida`);
+      
+    } catch (error) {
+      this.logger.error(`❌ Falha na validação: ${error.message}`);
+      throw error; // Re-throw para manter a mensagem original
+    }
+  }
+
   async create(
     createReservaDto: CreateReservaDto,
     userId: string,
   ): Promise<{ reserva: Reserva; pagamento: any }> {
-    try {
+    // 🔍 VALIDAÇÃO DE CÁLCULO E DISPONIBILIDADE ANTES DE SALVAR
+    await this.validarReservaCompleta(createReservaDto, userId);
+
+    return this.executeWithTransaction(async (session) => {
+      // 🔒 VALIDAÇÃO DE SEGURANÇA: Validar e recalcular dados do frontend
+      const { dadosValidados, alertasSeguranca } = await this.validarERecalcularDadosFrontend(
+        createReservaDto,
+        userId
+      );
+      
+      // Se houver alertas de segurança críticos, registrar mas continuar
+      if (alertasSeguranca.length > 0) {
+        this.logger.warn(`🚨 ${alertasSeguranca.length} alerta(s) de segurança detectado(s) para usuário ${userId}`);
+      }
+
       // Buscar usuário
       const usuario = await this.usuariosService.findById(userId);
-      // Verificar disponibilidade
-      const disponibilidade = await this.verificarDisponibilidade({
-        dataInicio: createReservaDto.dataInicio,
-        dataFim: createReservaDto.dataFim,
-        tipo: createReservaDto.tipo,
-        quantidadeChales: createReservaDto.quantidadeChales,
-      });
-
-      if (!disponibilidade) {
-        throw new BadRequestException(
-          'Não há disponibilidade para esta data ou quantidade de chalés',
-        );
+      if (!usuario) {
+        throw new NotFoundException('Usuário não encontrado');
       }
 
-      if (!disponibilidade) {
-        // Mensagens específicas para cada caso de indisponibilidade
-        if (createReservaDto.tipo === TipoReserva.BATISMO) {
-          throw new HttpException(
-            'Já existe uma reserva agendada para esta data',
-            HttpStatus.CONFLICT,
-          );
-        } else if (createReservaDto.tipo === TipoReserva.DIARIA) {
-          throw new HttpException(
-            'Já existe uma diária reservada para este período',
-            HttpStatus.CONFLICT,
-          );
-        } else {
-          throw new HttpException(
-            'O período solicitado não está disponível para este tipo de reserva',
-            HttpStatus.CONFLICT,
-          );
-        }
-      }
+      // ✅ Validação de cálculo e disponibilidade já foi feita
+      this.logger.log(`✅ Validações de cálculo e disponibilidade já realizadas, prosseguindo com criação da reserva`);
+      
       // Gerar código único para a reserva
       const codigo = await this.reservaModel.gerarCodigoReserva();
 
       // Gerar código de acesso
       const codigoAcesso = this.reservaModel.gerarCodigoAcesso();
 
-      createReservaDto.quantidadeDiarias = await this.getQtdDias(
-        createReservaDto.dataInicio,
-        createReservaDto.dataFim || createReservaDto.dataInicio,
-      );
-      // Calcular valor da reserva
+      // ✅ Usar dados validados pelo backend (não os do frontend)
+      this.logger.log(`🔒 Usando dados validados pelo backend - Quantidade de diárias: ${dadosValidados.quantidadeDiarias}`);
+      
+      // Calcular valor da reserva usando dados validados
       const valorTotaldaReserva =
-        await this.calculoReservaService.getValorReserva(createReservaDto);
+        await this.calculoReservaService.getValorReserva(dadosValidados);
 
-      // Criar reserva
+      // Criar reserva com dados validados
       const novaReserva = {
         codigo,
         codigoAcesso,
         usuario: usuario,
         usuarioEmail: usuario.email,
         usuarioNome: usuario.nome,
-        tipo: createReservaDto.tipo,
-        dataInicio: createReservaDto.dataInicio,
-        dataFim: createReservaDto.dataFim || createReservaDto.dataInicio, // Se não informar dataFim, usa a mesma dataInicio
-        quantidadePessoas: createReservaDto.quantidadePessoas,
-        quantidadeChales: createReservaDto.quantidadeChales,
-        quantidadeDiarias: await this.getQtdDias(
-          createReservaDto.dataInicio,
-          createReservaDto.dataFim || createReservaDto.dataInicio,
-        ),
-        observacoes: createReservaDto.observacoes,
+        tipo: dadosValidados.tipo,
+        dataInicio: dadosValidados.dataInicio,
+        dataFim: dadosValidados.dataFim || dadosValidados.dataInicio,
+        quantidadePessoas: dadosValidados.quantidadePessoas, // ✅ Validado pelo backend
+        quantidadeChales: dadosValidados.quantidadeChales, // ✅ Validado pelo backend
+        quantidadeDiarias: dadosValidados.quantidadeDiarias, // ✅ Recalculado pelo backend
+        observacoes: dadosValidados.observacoes,
         historico: [
           {
             data: new Date(),
             acao: 'Reserva criada',
-            detalhes: 'Aguardando pagamento',
+            detalhes: alertasSeguranca.length > 0 
+              ? `Aguardando pagamento (${alertasSeguranca.length} alerta(s) de segurança)` 
+              : 'Aguardando pagamento',
           },
         ],
         valorTotal: valorTotaldaReserva.valorTotal,
-        dadosPagamento: createReservaDto.dadosPagamento,
+        dadosPagamento: dadosValidados.dadosPagamento,
+        dadosHospede: dadosValidados.dadosHospede,
         dataCriacao: new Date(),
         dataAtualizacao: new Date(),
       };
@@ -123,10 +216,163 @@ export class ReservasService {
       let reserva = reservaCriada.reserva;
       let pagamento = reservaCriada.pagamento;
       return { reserva, pagamento };
+    });
+  }
+
+  async createPublico(
+    createReservaDto: CreateReservaDto,
+  ): Promise<{ reserva: Reserva; pagamento: any }> {
+    return this.executeWithTransaction(async (session) => {
+      // 🔍 DEBUG: Log dos dados recebidos
+      this.logger.log(`🔍 DEBUG - Dados recebidos do frontend:`);
+      this.logger.log(`📦 createReservaDto: ${JSON.stringify(createReservaDto, null, 2)}`);
+      this.logger.log(`📦 dadosHospede: ${JSON.stringify(createReservaDto.dadosHospede, null, 2)}`);
+      
+      // Validar dados obrigatórios do hóspede
+      if (!createReservaDto.dadosHospede?.email || !createReservaDto.dadosHospede?.cpf) {
+        this.logger.error(`❌ Dados obrigatórios ausentes:`);
+        this.logger.error(`📧 Email: ${createReservaDto.dadosHospede?.email || 'AUSENTE'}`);
+        this.logger.error(`🆔 CPF: ${createReservaDto.dadosHospede?.cpf || 'AUSENTE'}`);
+        throw new BadRequestException(
+          'Email e CPF são obrigatórios para criar uma reserva pública'
+        );
+      }
+
+      // Criar usuário automaticamente com base nos dados do hóspede
+      const usuario = await this.usuariosService.createFromBookingData({
+        nome: createReservaDto.dadosHospede.nome || 'Usuário',
+        sobrenome: createReservaDto.dadosHospede.sobrenome || '',
+        email: createReservaDto.dadosHospede.email,
+        cpf: createReservaDto.dadosHospede.cpf,
+        telefone: createReservaDto.dadosHospede.telefone || '',
+        senha: this.generateRandomPassword(), // Senha temporária
+        isAdmin: false
+      });
+
+      // Usar o método create normal com o usuário criado
+      return this.create(createReservaDto, (usuario as any)._id.toString());
+    });
+  }
+
+  async createPublicoDebug(
+    createReservaDto: CreateReservaDto,
+  ): Promise<{ reserva: Reserva; pagamento: any }> {
+    try {
+      this.logger.log(`DEBUG: Criando reserva pública sem verificação de disponibilidade`);
+      
+      // Validar dados obrigatórios do hóspede
+      if (!createReservaDto.dadosHospede?.email || !createReservaDto.dadosHospede?.cpf) {
+        throw new BadRequestException(
+          'Email e CPF são obrigatórios para criar uma reserva pública'
+        );
+      }
+      
+      // Criar usuário automaticamente com base nos dados do hóspede
+      const usuario = await this.usuariosService.createFromBookingData({
+        nome: createReservaDto.dadosHospede.nome || 'Usuário',
+        sobrenome: createReservaDto.dadosHospede.sobrenome || '',
+        email: createReservaDto.dadosHospede.email,
+        cpf: createReservaDto.dadosHospede.cpf,
+        telefone: createReservaDto.dadosHospede.telefone || '',
+        senha: this.generateRandomPassword(), // Senha temporária
+        isAdmin: false
+      });
+
+      this.logger.log(`DEBUG: Usuário criado: ${usuario.email}`);
+
+      // Usar o método create normal com o usuário criado, mas sem verificação de disponibilidade
+      return this.createDebug(createReservaDto, (usuario as any)._id.toString());
     } catch (error) {
-      this.logger.error(`Erro ao criar reserva: ${error.message}`);
+      this.logger.error(`Erro ao criar reserva pública DEBUG: ${error.message}`);
       throw error;
     }
+  }
+
+  async createDebug(
+    createReservaDto: CreateReservaDto,
+    userId: string,
+  ): Promise<{ reserva: Reserva; pagamento: any }> {
+    try {
+      this.logger.log(`DEBUG: Iniciando criação de reserva sem verificação de disponibilidade`);
+      
+      // Buscar usuário
+      const usuario = await this.usuariosService.findById(userId);
+      this.logger.log(`DEBUG: Usuário encontrado: ${usuario.email}`);
+
+      // PULAR verificação de disponibilidade para debug
+      this.logger.log(`DEBUG: Pulando verificação de disponibilidade`);
+
+      // Gerar código único para a reserva
+      const codigo = await this.reservaModel.gerarCodigoReserva();
+      this.logger.log(`DEBUG: Código da reserva gerado: ${codigo}`);
+
+      // Gerar código de acesso
+      const codigoAcesso = this.reservaModel.gerarCodigoAcesso();
+
+      createReservaDto.quantidadeDiarias = await this.getQtdDias(
+        createReservaDto.dataInicio,
+        createReservaDto.dataFim || createReservaDto.dataInicio,
+      );
+      
+      this.logger.log(`DEBUG: Quantidade de diárias calculada: ${createReservaDto.quantidadeDiarias}`);
+      
+      // Calcular valor da reserva
+      const valorTotaldaReserva =
+        await this.calculoReservaService.getValorReserva(createReservaDto);
+      
+      this.logger.log(`DEBUG: Valor da reserva calculado: ${JSON.stringify(valorTotaldaReserva)}`);
+
+      // Criar reserva
+      const novaReserva = {
+        codigo,
+        codigoAcesso,
+        usuario: usuario,
+        usuarioEmail: usuario.email,
+        usuarioNome: usuario.nome,
+        tipo: createReservaDto.tipo,
+        dataInicio: createReservaDto.dataInicio,
+        dataFim: createReservaDto.dataFim || createReservaDto.dataInicio,
+        quantidadePessoas: createReservaDto.quantidadePessoas,
+        quantidadeChales: createReservaDto.quantidadeChales,
+        quantidadeDiarias: await this.getQtdDias(
+          createReservaDto.dataInicio,
+          createReservaDto.dataFim || createReservaDto.dataInicio,
+        ),
+        observacoes: createReservaDto.observacoes,
+        historico: [
+          {
+            data: new Date(),
+            acao: 'Reserva criada (DEBUG)',
+            detalhes: 'Aguardando pagamento',
+          },
+        ],
+        valorTotal: valorTotaldaReserva.valorTotal,
+        dadosPagamento: createReservaDto.dadosPagamento,
+        dataCriacao: new Date(),
+        dataAtualizacao: new Date(),
+      };
+
+      this.logger.log(`DEBUG: Dados da reserva: ${JSON.stringify(novaReserva)}`);
+
+      const reservaCriada =
+        await this.reservaProcessoService.processarNovaReserva(novaReserva);
+
+      let reserva = reservaCriada.reserva;
+      let pagamento = reservaCriada.pagamento;
+      
+      this.logger.log(`DEBUG: Reserva criada com sucesso: ${reserva.codigo}`);
+      
+      return { reserva, pagamento };
+    } catch (error) {
+      this.logger.error(`DEBUG: Erro ao criar reserva: ${error.message}`);
+      this.logger.error(`DEBUG: Stack trace: ${error.stack}`);
+      throw error;
+    }
+  }
+
+  private generateRandomPassword(): string {
+    // Gerar senha temporária que será alterada no primeiro login
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   }
 
   // async update(
@@ -275,12 +521,16 @@ export class ReservasService {
   async verificarDisponibilidade(
     disponibilidadeDTO: VerificarDisponibilidadeDto,
   ): Promise<boolean> {
+    this.logger.log(`DEBUG: Verificando disponibilidade para: ${JSON.stringify(disponibilidadeDTO)}`);
+    
     // Para facilitar a comparação, vamos trabalhar só com as datas (sem horas)
     const inicioAjustado = new Date(disponibilidadeDTO.dataInicio);
     inicioAjustado.setHours(0, 0, 0, 0);
 
     const fimAjustado = new Date(disponibilidadeDTO.dataFim);
     fimAjustado.setHours(23, 59, 59, 999);
+    
+    this.logger.log(`DEBUG: Datas ajustadas - Início: ${inicioAjustado.toISOString()}, Fim: ${fimAjustado.toISOString()}`);
 
     // Critérios de busca base - períodos que se sobrepõem
     const filtroBase = {
@@ -307,13 +557,18 @@ export class ReservasService {
 
     switch (disponibilidadeDTO.tipo) {
       case TipoReserva.BATISMO:
+        this.logger.log(`DEBUG: Verificando disponibilidade para BATISMO`);
+        
         // Para batismo, não pode haver outro batismo no mesmo dia
         const reservasBatismo = await this.reservaModel.find({
           ...filtroBase,
           tipo: TipoReserva.BATISMO,
         });
 
+        this.logger.log(`DEBUG: Reservas de batismo encontradas: ${reservasBatismo.length}`);
+
         if (reservasBatismo.length > 0) {
+          this.logger.log(`DEBUG: Batismo indisponível - já existe reserva de batismo no período`);
           return false; // Já existe batismo para o período
         }
 
@@ -323,20 +578,29 @@ export class ReservasService {
           tipo: TipoReserva.DIARIA,
         });
 
+        this.logger.log(`DEBUG: Diárias encontradas no período: ${diariasNoPeriodoBatismo.length}`);
+
         if (diariasNoPeriodoBatismo.length > 0) {
+          this.logger.log(`DEBUG: Batismo indisponível - há diárias no período`);
           return false; // Há diárias que impedem o batismo
         }
 
+        this.logger.log(`DEBUG: Batismo disponível`);
         return true;
 
       case TipoReserva.DIARIA:
+        this.logger.log(`DEBUG: Verificando disponibilidade para DIARIA`);
+        
         // Verificar se há batismos no período (que impedem diárias)
         const batismosNoPeriodo = await this.reservaModel.find({
           ...filtroBase,
           tipo: TipoReserva.BATISMO,
         });
 
+        this.logger.log(`DEBUG: Batismos encontrados no período: ${batismosNoPeriodo.length}`);
+
         if (batismosNoPeriodo.length > 0) {
+          this.logger.log(`DEBUG: Diária indisponível - há batismos no período`);
           return false; // Há batismos que impedem a reserva de diária
         }
 
@@ -347,7 +611,10 @@ export class ReservasService {
           tipo: TipoReserva.DIARIA,
         });
 
+        this.logger.log(`DEBUG: Diárias encontradas no período: ${diariasNoPeriodo.length}`);
+
         if (diariasNoPeriodo.length > 0) {
+          this.logger.log(`DEBUG: Diária indisponível - já existe diária no período`);
           return false; // Já existe diária para o período
         }
 
@@ -356,12 +623,46 @@ export class ReservasService {
           disponibilidadeDTO.quantidadeChales &&
           disponibilidadeDTO.quantidadeChales > 0
         ) {
-          const config = await this.reservaProcessoService.getConfiguracoes();
-          const maxChalesDisponiveis = config.qtdTotalChales || 10; // Default 10 se não configurado
+          const maxChalesDisponiveis = 4; // Quantidade fixa de chalés disponíveis
+          
+          this.logger.log(`Verificando disponibilidade de chalés: solicitados ${disponibilidadeDTO.quantidadeChales}, máximo disponível ${maxChalesDisponiveis}`);
 
           // Verificar se a quantidade solicitada excede o máximo disponível
           if (disponibilidadeDTO.quantidadeChales > maxChalesDisponiveis) {
+            this.logger.warn(`Quantidade de chalés solicitada (${disponibilidadeDTO.quantidadeChales}) excede o máximo disponível (${maxChalesDisponiveis})`);
             return false; // Quantidade de chalés solicitada excede o total disponível
+          }
+
+          // Verificar chalés já reservados no período
+          const filtroChales = {
+            ...filtroBase,
+            $or: [
+              { tipo: TipoReserva.CHALE },
+              { tipo: TipoReserva.COMPLETO }
+            ],
+            quantidadeChales: { $exists: true, $gt: 0 }
+          };
+          
+          this.logger.log(`Filtro para buscar reservas de chalés: ${JSON.stringify(filtroChales)}`);
+          
+          const reservasChalesNoPeriodo = await this.reservaModel.find(filtroChales);
+          
+          this.logger.log(`Reservas de chalés encontradas no período: ${reservasChalesNoPeriodo.length}`);
+
+          // Calcular total de chalés já reservados no período
+          let totalChalesReservados = 0;
+          for (const reserva of reservasChalesNoPeriodo) {
+            totalChalesReservados += reserva.quantidadeChales || 0;
+            this.logger.log(`Reserva ${reserva.codigo}: ${reserva.quantidadeChales} chalés`);
+          }
+
+          // Verificar se há chalés suficientes disponíveis
+          const chalésDisponiveis = maxChalesDisponiveis - totalChalesReservados;
+          this.logger.log(`Chalés disponíveis: ${chalésDisponiveis} (total: ${maxChalesDisponiveis}, reservados: ${totalChalesReservados})`);
+          
+          if (disponibilidadeDTO.quantidadeChales > chalésDisponiveis) {
+            this.logger.warn(`Chalés insuficientes: solicitados ${disponibilidadeDTO.quantidadeChales}, disponíveis ${chalésDisponiveis} (total: ${maxChalesDisponiveis}, reservados: ${totalChalesReservados})`);
+            return false; // Chalés insuficientes disponíveis
           }
         }
 
@@ -394,5 +695,81 @@ export class ReservasService {
       Math.ceil(diferencaMS / (1000 * 60 * 60 * 24)),
     );
     return diferencaDias;
+  }
+
+  /**
+   * Valida e recalcula dados recebidos do frontend por segurança
+   * Garante que o frontend não manipulou informações críticas
+   */
+  private async validarERecalcularDadosFrontend(
+    dadosFrontend: CreateReservaDto,
+    userId: string
+  ): Promise<{ dadosValidados: CreateReservaDto; alertasSeguranca: string[] }> {
+    const alertasSeguranca: string[] = [];
+    
+    // 1. Recalcular quantidade de diárias baseado nas datas
+    const quantidadeDiariasCalculada = await this.getQtdDias(
+      dadosFrontend.dataInicio,
+      dadosFrontend.dataFim || dadosFrontend.dataInicio
+    );
+    
+    // 2. Verificar se a quantidade enviada pelo frontend está correta
+    if (dadosFrontend.quantidadeDiarias && dadosFrontend.quantidadeDiarias !== quantidadeDiariasCalculada) {
+      const alerta = `⚠️ SEGURANÇA: Quantidade de diárias manipulada! Frontend enviou: ${dadosFrontend.quantidadeDiarias}, Calculado pelo backend: ${quantidadeDiariasCalculada}`;
+      alertasSeguranca.push(alerta);
+      this.logger.warn(alerta);
+      this.logger.warn(`Usuário: ${userId}, Data início: ${dadosFrontend.dataInicio}, Data fim: ${dadosFrontend.dataFim}`);
+    }
+    
+    // 3. Validar limites de quantidade de pessoas
+    if (dadosFrontend.quantidadePessoas && (dadosFrontend.quantidadePessoas < 1 || dadosFrontend.quantidadePessoas > 200)) {
+      const alerta = `⚠️ SEGURANÇA: Quantidade de pessoas inválida! Frontend enviou: ${dadosFrontend.quantidadePessoas}`;
+      alertasSeguranca.push(alerta);
+      this.logger.warn(alerta);
+    }
+    
+    // 4. Validar limites de quantidade de chalés
+    if (dadosFrontend.quantidadeChales && (dadosFrontend.quantidadeChales < 0 || dadosFrontend.quantidadeChales > 4)) {
+      const alerta = `⚠️ SEGURANÇA: Quantidade de chalés inválida! Frontend enviou: ${dadosFrontend.quantidadeChales}`;
+      alertasSeguranca.push(alerta);
+      this.logger.warn(alerta);
+    }
+    
+    // 5. Validar datas (não podem ser no passado)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    
+    if (new Date(dadosFrontend.dataInicio) < hoje) {
+      const alerta = `⚠️ SEGURANÇA: Data de início no passado! Frontend enviou: ${dadosFrontend.dataInicio}`;
+      alertasSeguranca.push(alerta);
+      this.logger.warn(alerta);
+    }
+    
+    // 6. Validar se data fim é posterior à data início
+    if (dadosFrontend.dataFim && new Date(dadosFrontend.dataFim) < new Date(dadosFrontend.dataInicio)) {
+      const alerta = `⚠️ SEGURANÇA: Data fim anterior à data início! Frontend enviou: início ${dadosFrontend.dataInicio}, fim ${dadosFrontend.dataFim}`;
+      alertasSeguranca.push(alerta);
+      this.logger.warn(alerta);
+    }
+    
+    // 7. Criar dados validados com valores recalculados pelo backend
+    const dadosValidados: CreateReservaDto = {
+      ...dadosFrontend,
+      quantidadeDiarias: quantidadeDiariasCalculada, // ✅ Sempre usar valor calculado pelo backend
+      quantidadePessoas: Math.max(1, Math.min(200, dadosFrontend.quantidadePessoas || 1)), // ✅ Forçar limites
+      quantidadeChales: Math.max(0, Math.min(4, dadosFrontend.quantidadeChales || 0)), // ✅ Forçar limites
+    };
+    
+    // 8. Log de segurança para auditoria
+    if (alertasSeguranca.length > 0) {
+      this.logger.error(`🚨 ALERTA DE SEGURANÇA - Usuário: ${userId}`);
+      this.logger.error(`📊 Dados originais: ${JSON.stringify(dadosFrontend, null, 2)}`);
+      this.logger.error(`✅ Dados validados: ${JSON.stringify(dadosValidados, null, 2)}`);
+      this.logger.error(`⚠️ Alertas: ${alertasSeguranca.join(', ')}`);
+    } else {
+      this.logger.log(`✅ Validação de segurança passou - Usuário: ${userId}`);
+    }
+    
+    return { dadosValidados, alertasSeguranca };
   }
 }

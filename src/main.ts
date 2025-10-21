@@ -6,6 +6,25 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
   
+  // Configurar CORS para permitir requests do frontend
+  app.enableCors({
+    origin: [
+      'http://localhost:4200',  // Angular dev server
+      'http://127.0.0.1:4200',  // Angular dev server (alternativo)
+      'http://localhost:3000',  // Backend (caso necessário)
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+    credentials: true, // Permitir cookies/credenciais se necessário
+  });
+  
+  logger.log('CORS configurado para desenvolvimento');
   logger.log('Aplicação conectada ao MongoDB');
   
   await app.listen(3000);

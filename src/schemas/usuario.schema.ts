@@ -16,6 +16,9 @@ export class Usuario {
   @Prop({ required: true })
   nome: string;
 
+  @Prop()
+  sobrenome: string;
+
   @Prop({ required: true, unique: true })
   email: string;
 

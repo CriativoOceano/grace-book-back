@@ -157,4 +157,14 @@ export class ReservaRepository implements IReservaRepository {
 
     return reservas;
   }
+
+  /**
+   * Busca reservas confirmadas para bloquear datas no calendário
+   */
+  async findReservasConfirmadas(): Promise<any[]> {
+    return this.reservaModel
+      .find({ statusReserva: 'CONFIRMADA' })
+      .select('dataInicio dataFim tipo')
+      .exec();
+  }
 }

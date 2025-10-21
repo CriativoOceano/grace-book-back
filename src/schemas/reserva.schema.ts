@@ -3,6 +3,7 @@ import { Document, Model, Schema as MongooseSchema } from 'mongoose';
 import { Usuario } from './usuario.schema';
 import { Pagamento } from './pagamentos.schema';
 import { StatusReserva, TipoReserva } from 'src/modules/reservas/reserva.enums';
+import { DadosHospede } from '../interfaces/dados-hospede.interface';
 
 export type ReservaDocument = Reserva & Document;
 
@@ -74,6 +75,9 @@ export class Reserva {
 
   @Prop({ type: Object })
   dadosPagamento: any;
+
+  @Prop({ type: Object })
+  dadosHospede?: DadosHospede;
 
   @Prop()
   observacoes: string;

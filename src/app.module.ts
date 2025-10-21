@@ -3,17 +3,30 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { SharedModule } from './modules/modules';
+import { AuthModule } from './modules/auth/auth.module';
 import { ReservasModule } from './modules/reservas/reservas.module';
 import { PagamentosModule } from './modules/pagamentos/pagamento.module';
 import { ReservaProcessoModule } from './modules/shared/services/reservaProcesso/reserva-processo.module';
+import { ConfiguracoesModule } from './modules/configuracoes/configuracoes.module';
+import { DisponibilidadeModule } from './modules/disponibilidade/disponibilidade.module';
 
 @Module({
   imports: [
     SharedModule,
+    AuthModule,
     ReservasModule,
     PagamentosModule,
+    ConfiguracoesModule,
+    DisponibilidadeModule,
     ConfigModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 60 segundos
+        limit: 5, // máximo 5 tentativas por minuto
+      },
+    ]),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => {

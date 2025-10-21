@@ -19,6 +19,12 @@ export class Pagamento {
   @Prop({ type: String, required: true})
   asaasPagamentoId: string;
 
+  @Prop({ type: String })
+  asaasCheckoutSessionId: string;
+
+  @Prop({ type: String })
+  asaasPaymentId: string;
+
   @Prop({type: Number, min: 1 })
   valorTotal: number;
 

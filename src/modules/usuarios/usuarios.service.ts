@@ -28,6 +28,59 @@ export class UsuariosService {
     return createdUsuario.save();
   }
 
+  async createFromBookingData(bookingData: {
+    nome: string;
+    sobrenome: string;
+    email: string;
+    cpf: string;
+    telefone: string;
+    senha: string;
+    isAdmin?: boolean;
+  }): Promise<Usuario> {
+    // Validar dados obrigatórios
+    if (!bookingData.email || !bookingData.cpf) {
+      throw new BadRequestException(
+        'Email e CPF são obrigatórios para criar um usuário'
+      );
+    }
+
+    // Limpar e validar dados
+    const emailLimpo = bookingData.email.trim();
+    const cpfLimpo = bookingData.cpf.replace(/\D/g, ''); // Remove caracteres não numéricos
+
+    if (!emailLimpo || !cpfLimpo) {
+      throw new BadRequestException(
+        'Email e CPF não podem estar vazios após limpeza'
+      );
+    }
+
+    // Verificar se já existe usuário com o mesmo email ou CPF
+    const usuarioExistente = await this.usuarioModel.findOne({
+      $or: [
+        { email: emailLimpo },
+        { cpf: cpfLimpo }
+      ],
+    });
+
+    if (usuarioExistente) {
+      // Se já existe, retornar o usuário existente
+      return usuarioExistente;
+    }
+
+    // Criar novo usuário com dados da reserva
+    const novoUsuario = new this.usuarioModel({
+      nome: bookingData.nome?.trim() || 'Usuário',
+      sobrenome: bookingData.sobrenome?.trim() || '',
+      email: emailLimpo,
+      cpf: cpfLimpo,
+      telefone: bookingData.telefone?.trim() || '',
+      senha: bookingData.senha,
+      isAdmin: bookingData.isAdmin || false,
+    });
+
+    return novoUsuario.save();
+  }
+
   async findAll(): Promise<Usuario[]> {
     return this.usuarioModel.find().exec();
   }

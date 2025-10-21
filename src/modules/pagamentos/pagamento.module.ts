@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PagamentosController } from './controllers/pagamento.controller';
+import { WebhookController } from './controllers/webhook.controller';
 import { PagamentosService } from './pagamentos.service';
 import { SharedModule } from '../modules';
 import { pagamentoRepositoryProvider } from './repositories/pagamento-repository.provider';
@@ -8,7 +9,7 @@ import { pagamentoRepositoryProvider } from './repositories/pagamento-repository
   imports: [
     SharedModule,
   ],
-  controllers: [PagamentosController],
+  controllers: [PagamentosController, WebhookController],
   providers: [PagamentosService],
   exports: []
 })

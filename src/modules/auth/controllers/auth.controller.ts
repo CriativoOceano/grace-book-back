@@ -1,6 +1,7 @@
 import { 
   Controller, 
   Post, 
+  Get,
   Body, 
   HttpCode, 
   HttpStatus, 
@@ -8,6 +9,7 @@ import {
   Request, 
   Logger
 } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { LocalAuthGuard } from '../guards/local-auth.guard';
 import { AuthService } from '../auth.service';
 
@@ -34,5 +36,17 @@ export class AuthController {
     @Body() { identificador, codigo }: { identificador: string; codigo: string },
   ) {
     return this.authService.loginComCodigo(identificador, codigo);
+  }
+
+  @Post('admin-login')
+  @HttpCode(HttpStatus.OK)
+  async loginAdmin(@Body() { codigo }: { codigo: string }) {
+    return this.authService.loginAdmin(codigo);
+  }
+
+  @Get('admin-status')
+  @HttpCode(HttpStatus.OK)
+  async adminStatus() {
+    return { message: 'Admin endpoint is working' };
   }
 }

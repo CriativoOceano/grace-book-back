@@ -10,19 +10,16 @@ import { pagamentoRepositoryProvider } from './pagamentos/repositories/pagamento
 import { reservaRepositoryProvider } from './reservas/repositories/reserva-repository.provider';
 import { AuthModule } from './auth/auth.module';
 import { UsuariosService } from './usuarios/usuarios.service';
-import { ConfiguracoesService } from './configuracoes/configuracoes.service';
 import { ReservaRepository } from './reservas/repositories/reserva.repository';
 import { ReservaProcessoService } from 'src/modules/shared/services/reservaProcesso/reserva-processo.service';
 import { Usuario, UsuarioSchema } from 'src/schemas/usuario.schema';
-import { ConfiguracaoSchema } from 'src/schemas/config.schema';
-import { UpdateConfiguracaoDto } from './configuracoes/DTO/update-configuracoes.dto';
 import { ConfigService } from '@nestjs/config';
 import { PagamentosService } from './pagamentos/pagamentos.service';
 import { PagamentoRepository } from './pagamentos/repositories/pagamento.repository';
-import { ConfiguracoesRepository } from './configuracoes/repositories/configuracoes.repository';
-import { configuracoesRepositoryProvider } from './configuracoes/repositories/configuracaoes-repository.provider';
 import { EmailsService } from './emails/email.service';
 import { CalculoReservaService } from './shared/services/reservaProcesso/calcular-reserva.service';
+import { configuracoesRepositoryProvider } from './configuracoes/repositories/configuracaoes-repository.provider';
+import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
 
 @Module({
   imports: [
@@ -35,7 +32,7 @@ import { CalculoReservaService } from './shared/services/reservaProcesso/calcula
       { name: Reserva.name, schema: ReservaSchema },
       { name: Pagamento.name, schema: PagamentoSchema },
       { name: Usuario.name, schema: UsuarioSchema },
-      { name: UpdateConfiguracaoDto.name, schema: ConfiguracaoSchema }
+      { name: Configuracao.name, schema: ConfiguracaoSchema }
     ]),
   ],
   providers: [
@@ -47,7 +44,6 @@ import { CalculoReservaService } from './shared/services/reservaProcesso/calcula
     configuracoesRepositoryProvider,
   
     UsuariosService,
-    ConfiguracoesService,
     EmailsService,
     ConfigService,
     PagamentosService,
@@ -61,13 +57,12 @@ import { CalculoReservaService } from './shared/services/reservaProcesso/calcula
     ReservaRepository,
     PagamentoRepository,
 
-
     pagamentoRepositoryProvider,
     reservaRepositoryProvider,
+    configuracoesRepositoryProvider,
 
     UsuariosService,
     PagamentosService,
-    ConfiguracoesService,
     EmailsService,
     ConfigService,
     ReservaProcessoService,
@@ -77,7 +72,7 @@ import { CalculoReservaService } from './shared/services/reservaProcesso/calcula
       { name: Reserva.name, schema: ReservaSchema },
       { name: Pagamento.name, schema: PagamentoSchema },
       { name: Usuario.name, schema: UsuarioSchema },
-      { name: UpdateConfiguracaoDto.name, schema: ConfiguracaoSchema },
+      { name: Configuracao.name, schema: ConfiguracaoSchema }
     ]),
   ],
 })

@@ -2,6 +2,7 @@ import { IsNotEmpty, IsString, IsEnum, IsOptional, IsNumber, IsDate, Min, Max, I
 import { Type } from 'class-transformer';
 import { IDadosPagamento } from 'src/modules/pagamentos/interfaces/dados-pagamento.interface';
 import { TipoReserva } from '../reserva.enums';
+import { DadosHospede } from '../../../interfaces/dados-hospede.interface';
 
 export class CreateReservaDto {
   @IsNotEmpty()
@@ -41,4 +42,8 @@ export class CreateReservaDto {
   @IsOptional()
   @IsString()
   observacoes?: string;
+
+  @IsOptional()
+  @IsObject()
+  dadosHospede?: DadosHospede;
 }

@@ -1,9 +1,12 @@
 import { Provider } from '@nestjs/common';
-import { ConfiguracoesRepository } from './configuracoes.repository';
+import { ConfiguracoesRepository, CONFIGURACOES_REPOSITORY } from './configuracoes.repository';
+import { getModelToken } from '@nestjs/mongoose';
+import { Configuracao } from '../../../schemas/config.schema';
 
-export const CONFIGURACOES_REPOSITORY = 'IConfiguracoesRepository';
+export { CONFIGURACOES_REPOSITORY };
 
 export const configuracoesRepositoryProvider: Provider = {
   provide: CONFIGURACOES_REPOSITORY,
-  useClass: ConfiguracoesRepository,
+  useFactory: (configuracaoModel) => new ConfiguracoesRepository(configuracaoModel),
+  inject: [getModelToken(Configuracao.name)],
 };

@@ -3,14 +3,14 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { UpdateConfiguracaoDto } from './DTO/update-configuracoes.dto';
 import { ConfiguracoesController } from './controllers/configuracoes.controller';
 import { ConfiguracoesService } from './configuracoes.service';
-import { ConfiguracaoSchema } from 'src/schemas/config.schema';
+import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
 import { configuracoesRepositoryProvider } from './repositories/configuracaoes-repository.provider';
 import { ConfiguracoesRepository } from './repositories/configuracoes.repository';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: UpdateConfiguracaoDto.name, schema: ConfiguracaoSchema }
+      { name: Configuracao.name, schema: ConfiguracaoSchema }
     ])
   ],
   controllers: [ConfiguracoesController],

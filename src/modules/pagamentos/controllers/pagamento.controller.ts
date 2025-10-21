@@ -39,11 +39,4 @@ import { IDadosPagamento } from '../interfaces/dados-pagamento.interface';
       return { success: cancelado };
     }
   
-    @Post('webhook')
-    @HttpCode(HttpStatus.OK)
-    async receberWebhook(@Body() payload: any) {
-      console.log('webhook', payload)
-      await this.pagamentosService.processarWebhook(payload);
-      return { received: true };
-    }
   }

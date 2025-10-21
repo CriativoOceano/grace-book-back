@@ -2,7 +2,7 @@ import exp from 'constants';
 
 // Enum para tipos de reserva
 export enum ModoPagamento {
-  CARTAO = 'CREDIT_CARD',
+  CARTAO = 'CARTAO', // Mudado para corresponder ao frontend
   PIX = 'PIX',
   BOLETO = 'BOLETO',
 }

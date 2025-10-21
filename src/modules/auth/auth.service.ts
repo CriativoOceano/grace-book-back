@@ -4,6 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { UsuarioDocument } from 'src/schemas/usuario.schema';
 import { EmailsService } from '../emails/email.service';
+import { ConfiguracoesService } from '../configuracoes/configuracoes.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +13,7 @@ export class AuthService {
     private readonly usuariosService: UsuariosService,
     private readonly jwtService: JwtService,
     private readonly emailsService: EmailsService,
+    private readonly configuracoesService: ConfiguracoesService,
   ) {}
 
   async validateUser(emailOrCpf: string, pass: string): Promise<any> {
@@ -109,5 +112,42 @@ export class AuthService {
     const [username, domain] = email.split('@');
     const maskedUsername = username.substring(0, 8) + '*'.repeat(username.length - 2);
     return `${maskedUsername}@${domain}`;
+  }
+
+  // Método para validar código de acesso admin
+  async validateAdminCode(codigo: string): Promise<boolean> {
+    try {
+      const configuracao = await this.configuracoesService.findAll();
+      return await bcrypt.compare(codigo, configuracao.adminAccessCode);
+    } catch (error) {
+      console.error('Erro ao validar código admin:', error);
+      return false;
+    }
+  }
+
+  // Método para login admin com código
+  async loginAdmin(codigo: string) {
+    const codigoValido = await this.validateAdminCode(codigo);
+    
+    if (!codigoValido) {
+      throw new UnauthorizedException('Código de acesso inválido');
+    }
+    
+    // Gerar token JWT para admin
+    const payload = { 
+      sub: 'admin', 
+      email: 'admin@fontedagraca.com.br', 
+      isAdmin: true 
+    };
+    
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: {
+        id: 'admin',
+        nome: 'Administrador',
+        email: 'admin@fontedagraca.com.br',
+        isAdmin: true,
+      },
+    };
   }
 }

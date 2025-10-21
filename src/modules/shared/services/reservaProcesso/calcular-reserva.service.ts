@@ -36,7 +36,7 @@ export class CalculoReservaService {
         }
 
         const valorDiariaChales =
-          (reservaData.quantidadeChales || 0) * config.precoChale;
+          (reservaData.quantidadeChales || 0) * config.precoChale * qtdDias;
 
         const result: {
           valorDiaria: number;
@@ -49,8 +49,8 @@ export class CalculoReservaService {
         };
 
         if (reservaData.quantidadeChales && reservaData.quantidadeChales > 0) {
-          result.valorDiariaComChale = valorDiariaBaseFaixa + valorDiariaChales;
-          result.valorTotal = result.valorDiariaComChale * qtdDias;
+          result.valorDiariaComChale = valorDiariaBaseFaixa + (valorDiariaChales / qtdDias);
+          result.valorTotal = valorDiariaBaseFaixa * qtdDias + valorDiariaChales;
         }
 
         return result;
