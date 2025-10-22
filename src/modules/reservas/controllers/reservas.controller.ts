@@ -14,7 +14,7 @@ import { ReservasService } from '../reservar.service';
 import { AdminGuard } from 'src/modules/auth/guards/admin.guard';
 import { CreateReservaDto } from '../DTO/create-reserva.dto';
 import { UpdateReservaDto } from '../DTO/update-reserva.dto';
-import { VerificarDisponibilidadeDto } from '../dto/verificar-disponibilidade.dto';
+import { VerificarDisponibilidadeDto } from '../DTO/verificar-disponibilidade.dto';
 import { ReservaRepository } from '../repositories/reserva.repository';
 import { CalculoReservaService } from 'src/modules/shared/services/reservaProcesso/calcular-reserva.service';
 

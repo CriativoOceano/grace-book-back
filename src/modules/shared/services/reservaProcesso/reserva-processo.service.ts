@@ -6,7 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { IPagamentoRepository } from 'src/modules/pagamentos/repositories/interfaces/pagamento-repository.interface';
-import { CreateReservaDto } from 'src/modules/reservas/dto/create-reserva.dto';
+import { CreateReservaDto } from 'src/modules/reservas/DTO/create-reserva.dto';
 import { IReservaRepository } from 'src/modules/reservas/repositories/interfaces/reserva-repository.interface';
 import { PAGAMENTO_REPOSITORY } from 'src/modules/pagamentos/repositories/pagamento-repository.provider';
 import { RESERVA_REPOSITORY } from 'src/modules/reservas/repositories/reserva-repository.provider';

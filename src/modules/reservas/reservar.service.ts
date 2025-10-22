@@ -8,10 +8,10 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { CreateReservaDto } from './dto/create-reserva.dto';
-import { UpdateReservaDto } from './dto/update-reserva.dto';
+import { CreateReservaDto } from './DTO/create-reserva.dto';
+import { UpdateReservaDto } from './DTO/update-reserva.dto';
 import { UsuariosService } from '../usuarios/usuarios.service';
-import { VerificarDisponibilidadeDto } from './dto/verificar-disponibilidade.dto';
+import { VerificarDisponibilidadeDto } from './DTO/verificar-disponibilidade.dto';
 import { Reserva, ReservaModel } from 'src/schemas/reserva.schema';
 import { ReservaRepository } from './repositories/reserva.repository';
 import { ReservaProcessoService } from 'src/modules/shared/services/reservaProcesso/reserva-processo.service';

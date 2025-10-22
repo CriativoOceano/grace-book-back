@@ -1,7 +1,7 @@
 import { Injectable, Inject, HttpException, HttpStatus } from '@nestjs/common';
 import { CONFIGURACOES_REPOSITORY } from 'src/modules/configuracoes/repositories/configuracaoes-repository.provider';
 import { IConfiguracoesRepository } from 'src/modules/configuracoes/repositories/interfaces/reserva-repository.interface';
-import { CreateReservaDto } from 'src/modules/reservas/dto/create-reserva.dto';
+import { CreateReservaDto } from 'src/modules/reservas/DTO/create-reserva.dto';
 
 @Injectable()
 export class CalculoReservaService {
