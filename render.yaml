@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: grace-book-backend
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: FRONTEND_URL
+        value: https://sedecampestre.netlify.app
+      # Database - Configure no dashboard do Render
+      - key: MONGODB_URI
+        sync: false
+      # JWT - Configure no dashboard do Render
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      # ASAAS Payment Gateway - Configure no dashboard do Render
+      - key: ASAAS_API_KEY
+        sync: false
+      - key: ASAAS_ENVIRONMENT
+        value: production
+      - key: ASAAS_BASE_URL
+        value: https://api.asaas.com/
+      - key: ASAAS_WEBHOOK_SECRET
+        sync: false
+      # Email Configuration - Configure no dashboard do Render
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: 587
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        value: noreply@sedecampestre.com
