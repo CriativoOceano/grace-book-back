@@ -58,6 +58,24 @@ export class ReservaRepository implements IReservaRepository {
     return reserva;
   }
 
+  async findByCodigoAndEmail(codigo: string, email: string): Promise<ReservaDocument> {
+    const reserva = await this.reservaModel
+      .findOne({ 
+        codigo,
+        usuarioEmail: email 
+      })
+      .populate('usuario')
+      .populate('pagamento')
+      .exec();
+
+    if (!reserva) {
+      throw new NotFoundException(
+        `Reserva com código "${codigo}" e email "${email}" não encontrada`,
+      );
+    }
+    return reserva;
+  }
+
   async findByData(data: any): Promise<ReservaDocument[]> {
     const dataConsulta = new Date(data);
     dataConsulta.setHours(0, 0, 0, 0);

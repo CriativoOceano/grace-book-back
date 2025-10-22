@@ -5,6 +5,7 @@ export interface IReservaRepository {
   findByUser(userId: string): Promise<ReservaDocument[]>;
   findById(id: string): Promise<ReservaDocument>;
   findByCodigo(codigoReserva: string): Promise<ReservaDocument>;
+  findByCodigoAndEmail(codigo: string, email: string): Promise<ReservaDocument>;
   createReserva(data: Partial<Reserva>, options?): Promise<Reserva>;
   updateReserva(reservaId: string, dto: Partial<Reserva>, options?): Promise<Reserva | null>;
   cancelReserva(reservaId: string, dto: Partial<Reserva>): Promise<Reserva | null>;

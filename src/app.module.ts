@@ -11,6 +11,7 @@ import { PagamentosModule } from './modules/pagamentos/pagamento.module';
 import { ReservaProcessoModule } from './modules/shared/services/reservaProcesso/reserva-processo.module';
 import { ConfiguracoesModule } from './modules/configuracoes/configuracoes.module';
 import { DisponibilidadeModule } from './modules/disponibilidade/disponibilidade.module';
+import { ClientesModule } from './modules/clientes/clientes.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { DisponibilidadeModule } from './modules/disponibilidade/disponibilidade
     PagamentosModule,
     ConfiguracoesModule,
     DisponibilidadeModule,
+    ClientesModule,
     ConfigModule.forRoot(),
     ThrottlerModule.forRoot([
       {

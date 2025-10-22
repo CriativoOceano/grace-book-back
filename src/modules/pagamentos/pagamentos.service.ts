@@ -26,6 +26,7 @@ import { EmailsService } from '../emails/email.service';
 import { CalculoReservaService } from '../shared/services/reservaProcesso/calcular-reserva.service';
 import { CreateReservaDto } from '../reservas/DTO/create-reserva.dto';
 import { StatusReserva } from '../reservas/reserva.enums';
+import { ReservaEmailData } from '../emails/templates/reserva-confirmacao.template';
 import { CONFIGURACOES_REPOSITORY } from '../configuracoes/repositories/configuracaoes-repository.provider';
 import { IConfiguracoesRepository } from '../configuracoes/repositories/interfaces/reserva-repository.interface';
 import * as fs from 'fs';
@@ -712,6 +713,31 @@ export class PagamentosService {
           `Pagamento confirmado via ASAAS - Evento: ${eventType}`,
         );
         this.logger.log(`✅ Reserva ${reserva.codigo} confirmada - Pagamento processado`);
+
+        // Enviar email de confirmação de pagamento
+        try {
+          const emailData: ReservaEmailData = {
+            nome: reserva.usuarioNome,
+            codigoReserva: reserva.codigo,
+            dataInicio: reserva.dataInicio.toLocaleDateString('pt-BR'),
+            dataFim: reserva.dataFim.toLocaleDateString('pt-BR'),
+            tipo: reserva.tipo,
+            quantidadePessoas: reserva.quantidadePessoas,
+            quantidadeChales: reserva.quantidadeChales,
+            quantidadeDiarias: reserva.quantidadeDiarias,
+            valorTotal: reserva.valorTotal,
+            statusReserva: StatusReserva.CONFIRMADA,
+            codigoAcesso: reserva.codigoAcesso,
+            observacoes: reserva.observacoes,
+            dadosHospede: reserva.dadosHospede
+          };
+
+          await this.emailsService.enviarEmailReservaConfirmada(emailData);
+          this.logger.log(`✅ Email de confirmação de pagamento enviado para ${reserva.usuarioEmail}`);
+        } catch (emailError) {
+          this.logger.error(`❌ Erro ao enviar email de confirmação: ${emailError.message}`);
+          // Não falhar o processamento do webhook por erro de email
+        }
       } else if (status === StatusPagamento.CANCELADO) {
         // Determinar motivo específico do cancelamento
         let motivoCancelamento = 'Pagamento cancelado via ASAAS';

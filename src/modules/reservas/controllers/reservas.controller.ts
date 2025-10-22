@@ -95,6 +95,11 @@ export class ReservasController {
     return this.reservaRepository.findByCodigo(codigo);
   }
 
+  @Post('consultar')
+  consultarReserva(@Body() body: { codigo: string; email: string }) {
+    return this.reservaRepository.findByCodigoAndEmail(body.codigo, body.email);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard, AdminGuard)
   update(

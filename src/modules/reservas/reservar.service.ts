@@ -20,6 +20,7 @@ import { StatusReserva, TipoReserva } from './reserva.enums';
 import { EmailsService } from '../emails/email.service';
 import { CalculoReservaService } from '../shared/services/reservaProcesso/calcular-reserva.service';
 import { ConfiguracoesRepository } from '../configuracoes/repositories/configuracoes.repository';
+import { ReservaEmailData } from '../emails/templates/reserva-confirmacao.template';
 
 @Injectable()
 export class ReservasService {
@@ -215,6 +216,33 @@ export class ReservasService {
 
       let reserva = reservaCriada.reserva;
       let pagamento = reservaCriada.pagamento;
+
+      // Enviar email de confirmação da reserva criada
+      try {
+        const emailData: ReservaEmailData = {
+          nome: reserva.usuarioNome,
+          codigoReserva: reserva.codigo,
+          dataInicio: reserva.dataInicio.toLocaleDateString('pt-BR'),
+          dataFim: reserva.dataFim.toLocaleDateString('pt-BR'),
+          tipo: reserva.tipo,
+          quantidadePessoas: reserva.quantidadePessoas,
+          quantidadeChales: reserva.quantidadeChales,
+          quantidadeDiarias: reserva.quantidadeDiarias,
+          valorTotal: reserva.valorTotal,
+          statusReserva: reserva.statusReserva,
+          codigoAcesso: reserva.codigoAcesso,
+          linkPagamento: pagamento?.linkPagamento,
+          observacoes: reserva.observacoes,
+          dadosHospede: reserva.dadosHospede
+        };
+
+        await this.emailsService.enviarEmailReservaCriada(emailData, pagamento?.linkPagamento);
+        this.logger.log(`✅ Email de confirmação enviado para ${reserva.usuarioEmail}`);
+      } catch (emailError) {
+        this.logger.error(`❌ Erro ao enviar email: ${emailError.message}`);
+        // Não falhar a criação da reserva por erro de email
+      }
+
       return { reserva, pagamento };
     });
   }

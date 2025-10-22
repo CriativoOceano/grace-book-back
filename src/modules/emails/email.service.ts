@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { getReservaConfirmacaoTemplate, ReservaEmailData } from './templates/reserva-confirmacao.template';
 
 @Injectable()
 export class EmailsService {
@@ -271,5 +272,66 @@ export class EmailsService {
     const texto = html.replace(/<[^>]*>/g, '');
 
     return this.enviarEmail(destinatario, assunto, texto, html);
+  }
+
+  // Método para enviar email quando reserva é criada
+  async enviarEmailReservaCriada(reservaData: ReservaEmailData, linkPagamento?: string): Promise<any> {
+    const emailData: ReservaEmailData = {
+      ...reservaData,
+      linkPagamento
+    };
+
+    const assunto = `Reserva ${reservaData.codigoReserva} criada - Aguardando Pagamento`;
+    const html = getReservaConfirmacaoTemplate(emailData, 'criada');
+    
+    // Texto simples para clientes que não suportam HTML
+    const texto = `
+      Olá ${reservaData.nome},
+      
+      Sua reserva foi criada com sucesso!
+      
+      Código da Reserva: ${reservaData.codigoReserva}
+      Tipo: ${reservaData.tipo}
+      Data: ${reservaData.dataInicio} a ${reservaData.dataFim}
+      Valor Total: R$ ${reservaData.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+      
+      Para garantir sua reserva, efetue o pagamento o mais breve possível.
+      Use o código de acesso ${reservaData.codigoAcesso} para consultar sua reserva.
+      
+      ${linkPagamento ? `Link para pagamento: ${linkPagamento}` : ''}
+      
+      Atenciosamente,
+      Equipe Espaço Fonte da Graça
+    `;
+
+    return this.enviarEmail(reservaData.dadosHospede?.email || '', assunto, texto, html);
+  }
+
+  // Método para enviar email quando pagamento é confirmado
+  async enviarEmailReservaConfirmada(reservaData: ReservaEmailData): Promise<any> {
+    const assunto = `Pagamento Confirmado - Reserva ${reservaData.codigoReserva}`;
+    const html = getReservaConfirmacaoTemplate(reservaData, 'confirmada');
+    
+    // Texto simples para clientes que não suportam HTML
+    const texto = `
+      Olá ${reservaData.nome},
+      
+      Seu pagamento foi confirmado com sucesso!
+      
+      Código da Reserva: ${reservaData.codigoReserva}
+      Tipo: ${reservaData.tipo}
+      Data: ${reservaData.dataInicio} a ${reservaData.dataFim}
+      Valor Total: R$ ${reservaData.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+      
+      Sua reserva está garantida e você não precisa realizar mais nenhuma ação.
+      Use o código de acesso ${reservaData.codigoAcesso} para consultar sua reserva.
+      
+      Aguardamos sua presença!
+      
+      Atenciosamente,
+      Equipe Espaço Fonte da Graça
+    `;
+
+    return this.enviarEmail(reservaData.dadosHospede?.email || '', assunto, texto, html);
   }
 }
