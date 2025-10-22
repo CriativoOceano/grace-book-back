@@ -45,7 +45,7 @@ import { DisponibilidadeModule } from './modules/disponibilidade/disponibilidade
         };
 
         return {
-          uri: configService.get<string>('DATABASE_URL'),
+          uri: configService.get<string>('MONGODB_URI'),
           useNewUrlParser: true,
           useUnifiedTopology: true,
           // Se necessário, você pode adicionar outras configurações do Mongoose aqui
