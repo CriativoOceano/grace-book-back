@@ -17,7 +17,7 @@ async function bootstrap() {
       'http://localhost:4200',  // Angular dev server
       'http://127.0.0.1:4200',  // Angular dev server (alternativo)
       'http://localhost:3000',  // Backend (caso necessário)
-      'https://sedecampestre.netlify.app',  // Frontend em produção
+      'https://sedecampestre.oceanodagraca.com',  // Frontend em produção
       frontendUrl,  // URL configurável via env
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
