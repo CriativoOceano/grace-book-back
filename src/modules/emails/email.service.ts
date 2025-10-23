@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import * as nodemailer from 'nodemailer';
 import { getReservaConfirmacaoTemplate, ReservaEmailData, getReservaCanceladaTemplate, ReservaCanceladaEmailData } from './templates/reserva-confirmacao.template';
 
@@ -7,24 +9,24 @@ import { getReservaConfirmacaoTemplate, ReservaEmailData, getReservaCanceladaTem
 export class EmailsService {
   private transporter: nodemailer.Transporter;
   private readonly logger = new Logger(EmailsService.name);
+  private readonly brevoApiKey: string;
+  private readonly brevoApiUrl = 'https://api.brevo.com/v3/smtp/email';
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly httpService: HttpService
+  ) {
+    this.brevoApiKey = this.configService.get<string>('EMAIL_API_BREVO_KEY');
     // Inicializar o transporter
     this.initializeTransporter();
   }
 
   private initializeTransporter() {
-    const host = this.configService.get<string>('EMAIL_HOST');
-    const port = this.configService.get<number>('EMAIL_PORT');
-    const user = this.configService.get<string>('EMAIL_USER');
-    const pass = this.configService.get<string>('EMAIL_PASS');
-
     // Verificar se estamos em ambiente de desenvolvimento
     const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
 
     if (isDevMode) {
       // Em desenvolvimento, use Mailtrap para testes
-      
       this.transporter = nodemailer.createTransport({
         host: 'sandbox.smtp.mailtrap.io',
         port: 587,
@@ -36,46 +38,78 @@ export class EmailsService {
       });
 
       this.logger.log('Usando Mailtrap para testes de email em desenvolvimento');
-    } else if (host && port && user && pass) {
-      // Em produção, use APENAS as variáveis de ambiente
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465, // true para 465, false para outras portas
-        auth: {
-          user,
-          pass,
-        },
-        // Configurações específicas para Brevo
-        tls: {
-          rejectUnauthorized: false,
-          ciphers: 'SSLv3'
-        },
-        // Configurações de timeout para evitar travamentos
-        connectionTimeout: 60000, // 60 segundos
-        greetingTimeout: 30000,   // 30 segundos
-        socketTimeout: 60000,     // 60 segundos
-        // Configurações de pool para melhor performance
-        pool: true,
-        maxConnections: 5,
-        maxMessages: 100,
-        rateLimit: 14, // máximo 14 emails por segundo
-      });
-
-      this.logger.log(`Servidor de email configurado para produção: ${host}:${port}`);
     } else {
-      // Em produção, se não tiver todas as variáveis, falhar explicitamente
-      this.logger.error('❌ ERRO: Variáveis de ambiente de email não configuradas em produção!');
-      this.logger.error('Variáveis necessárias: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS');
+      // Em produção, usar API Brevo - não inicializar transporter SMTP
+      this.logger.log('Usando API Brevo para envio de emails em produção');
       
-      throw new Error('Configurações de email não encontradas para produção. Configure as variáveis de ambiente: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS');
+      // Verificar se a API key está configurada
+      if (!this.brevoApiKey) {
+        this.logger.error('❌ ERRO: EMAIL_API_BREVO_KEY não configurada em produção!');
+        throw new Error('EMAIL_API_BREVO_KEY não configurada em produção. Configure a variável de ambiente EMAIL_API_BREVO_KEY');
+      }
     }
   }
 
   /**
-   * Testa a conexão com o servidor de email
+   * Envia email via API REST da Brevo
+   */
+  private async enviarEmailViaBrevoAPI(
+    destinatario: string,
+    assunto: string,
+    html: string,
+    fromEmail: string
+  ): Promise<any> {
+    const startTime = Date.now();
+    this.logger.log(`📧 Enviando email via API Brevo para ${destinatario}`);
+    
+    const payload = {
+      sender: {
+        name: "Sede Campestre",
+        email: fromEmail
+      },
+      to: [{ email: destinatario }],
+      subject: assunto,
+      htmlContent: html
+    };
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(this.brevoApiUrl, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.brevoApiKey
+          }
+        })
+      );
+
+      const duration = Date.now() - startTime;
+      this.logger.log(`✅ Email enviado via API Brevo para ${destinatario} em ${duration}ms`);
+      this.logger.log(`📧 Message ID: ${response.data.messageId}`);
+      
+      return response.data;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(`❌ Erro ao enviar email via API Brevo para ${destinatario} após ${duration}ms`);
+      this.logger.error(`❌ Status: ${error.response?.status}`);
+      this.logger.error(`❌ Status Text: ${error.response?.statusText}`);
+      this.logger.error(`❌ Data: ${JSON.stringify(error.response?.data)}`);
+      this.logger.error(`❌ Message: ${error.message}`);
+      
+      throw new Error(`Falha ao enviar email via API Brevo: ${error.message}`);
+    }
+  }
+
+  /**
+   * Testa a conexão com o servidor de email (apenas em desenvolvimento)
    */
   async testConnection(): Promise<boolean> {
+    const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
+    
+    if (!isDevMode) {
+      this.logger.log('Teste de conexão não disponível em produção (usando API Brevo)');
+      return true; // Assumir que está funcionando
+    }
+    
     try {
       await this.transporter.verify();
       this.logger.log('✅ Conexão com servidor de email verificada com sucesso');
@@ -90,19 +124,26 @@ export class EmailsService {
     const startTime = Date.now();
     this.logger.log(`📧 Iniciando envio de email para ${destinatario} - Assunto: ${assunto}`);
     
-    try {
-      // Em produção, usar APENAS variável de ambiente para EMAIL_FROM
-      const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
-      const fromEmail = isDevMode 
-        ? this.configService.get<string>('EMAIL_FROM') || 'reservas@chacaradaigreja.com.br'
-        : this.configService.get<string>('EMAIL_FROM');
-      
-      // Em produção, se não tiver EMAIL_FROM configurado, falhar
-      if (!isDevMode && !fromEmail) {
-        throw new Error('EMAIL_FROM não configurado em produção. Configure a variável de ambiente EMAIL_FROM');
-      }
-      
-      this.logger.log(`📧 Configurações de email - Host: ${this.configService.get<string>('EMAIL_HOST')}, Port: ${this.configService.get<number>('EMAIL_PORT')}, From: ${fromEmail}`);
+    // Verificar se estamos em ambiente de desenvolvimento
+    const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
+    
+    // Em produção, usar APENAS variável de ambiente para EMAIL_FROM
+    const fromEmail = isDevMode 
+      ? this.configService.get<string>('EMAIL_FROM') || 'reservas@chacaradaigreja.com.br'
+      : this.configService.get<string>('EMAIL_FROM');
+    
+    // Em produção, se não tiver EMAIL_FROM configurado, falhar
+    if (!isDevMode && !fromEmail) {
+      throw new Error('EMAIL_FROM não configurado em produção. Configure a variável de ambiente EMAIL_FROM');
+    }
+    
+    if (!isDevMode) {
+      // Usar API Brevo em produção
+      this.logger.log(`📧 Usando API Brevo para envio em produção`);
+      return this.enviarEmailViaBrevoAPI(destinatario, assunto, html || '', fromEmail);
+    } else {
+      // Usar SMTP (Mailtrap) em desenvolvimento
+      this.logger.log(`📧 Usando SMTP (Mailtrap) para envio em desenvolvimento`);
       
       const mailOptions: nodemailer.SendMailOptions = {
         from: `"Sede Campestre" <${fromEmail}>`,
@@ -127,27 +168,6 @@ export class EmailsService {
       }
       
       return info;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error(`❌ Erro ao enviar email para ${destinatario} após ${duration}ms`);
-      this.logger.error(`❌ Tipo do erro: ${error.constructor.name}`);
-      this.logger.error(`❌ Mensagem do erro: ${error.message}`);
-      this.logger.error(`❌ Stack trace: ${error.stack}`);
-      
-      // Log específico para timeouts
-      if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
-        this.logger.error(`❌ TIMEOUT DETECTADO - Verificar configurações de rede e servidor SMTP`);
-        this.logger.error(`❌ Host SMTP: ${this.configService.get<string>('EMAIL_HOST')}`);
-        this.logger.error(`❌ Porta SMTP: ${this.configService.get<number>('EMAIL_PORT')}`);
-      }
-      
-      // Log específico para erros de conexão
-      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-        this.logger.error(`❌ ERRO DE CONEXÃO - Servidor SMTP não acessível`);
-        this.logger.error(`❌ Verificar se o host ${this.configService.get<string>('EMAIL_HOST')} está correto e acessível`);
-      }
-      
-      throw new Error(`Falha ao enviar email: ${error.message}`);
     }
   }
 
