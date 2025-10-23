@@ -87,6 +87,9 @@ export class EmailsService {
   }
 
   async enviarEmail(destinatario: string, assunto: string, texto?: string, html?: string) {
+    const startTime = Date.now();
+    this.logger.log(`📧 Iniciando envio de email para ${destinatario} - Assunto: ${assunto}`);
+    
     try {
       // Em produção, usar APENAS variável de ambiente para EMAIL_FROM
       const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
@@ -99,6 +102,8 @@ export class EmailsService {
         throw new Error('EMAIL_FROM não configurado em produção. Configure a variável de ambiente EMAIL_FROM');
       }
       
+      this.logger.log(`📧 Configurações de email - Host: ${this.configService.get<string>('EMAIL_HOST')}, Port: ${this.configService.get<number>('EMAIL_PORT')}, From: ${fromEmail}`);
+      
       const mailOptions: nodemailer.SendMailOptions = {
         from: `"Sede Campestre" <${fromEmail}>`,
         to: destinatario,
@@ -107,19 +112,41 @@ export class EmailsService {
         html: html,
       };
 
+      this.logger.log(`📧 Enviando email via transporter...`);
       const info = await this.transporter.sendMail(mailOptions);
+      
+      const duration = Date.now() - startTime;
       
       // Se estiver usando Mailtrap (ambiente de desenvolvimento)
       if (info.messageId && info.messageId.includes('sandbox')) {
-        this.logger.log(`Email de teste enviado para ${destinatario}`);
-        this.logger.log(`Message ID: ${info.messageId}`);
+        this.logger.log(`✅ Email de teste enviado para ${destinatario} em ${duration}ms`);
+        this.logger.log(`📧 Message ID: ${info.messageId}`);
       } else {
-        this.logger.log(`Email enviado para ${destinatario}`);
+        this.logger.log(`✅ Email enviado para ${destinatario} em ${duration}ms`);
+        this.logger.log(`📧 Message ID: ${info.messageId}`);
       }
       
       return info;
     } catch (error) {
-      this.logger.error(`Erro ao enviar email para ${destinatario}: ${error.message}`);
+      const duration = Date.now() - startTime;
+      this.logger.error(`❌ Erro ao enviar email para ${destinatario} após ${duration}ms`);
+      this.logger.error(`❌ Tipo do erro: ${error.constructor.name}`);
+      this.logger.error(`❌ Mensagem do erro: ${error.message}`);
+      this.logger.error(`❌ Stack trace: ${error.stack}`);
+      
+      // Log específico para timeouts
+      if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
+        this.logger.error(`❌ TIMEOUT DETECTADO - Verificar configurações de rede e servidor SMTP`);
+        this.logger.error(`❌ Host SMTP: ${this.configService.get<string>('EMAIL_HOST')}`);
+        this.logger.error(`❌ Porta SMTP: ${this.configService.get<number>('EMAIL_PORT')}`);
+      }
+      
+      // Log específico para erros de conexão
+      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        this.logger.error(`❌ ERRO DE CONEXÃO - Servidor SMTP não acessível`);
+        this.logger.error(`❌ Verificar se o host ${this.configService.get<string>('EMAIL_HOST')} está correto e acessível`);
+      }
+      
       throw new Error(`Falha ao enviar email: ${error.message}`);
     }
   }
@@ -328,6 +355,8 @@ export class EmailsService {
     status: string,
     linkPagamento?: string
   ) {
+    this.logger.log(`📧 Iniciando envio de notificação de pagamento - Status: ${status}, Reserva: ${codigoReserva}, Destinatário: ${destinatario}`);
+    
     let assunto = '';
     let mensagem = '';
     
@@ -426,6 +455,7 @@ export class EmailsService {
 
     const texto = html.replace(/<[^>]*>/g, '');
 
+    this.logger.log(`📧 Preparando envio de email de notificação de pagamento - Assunto: ${assunto}`);
     return this.enviarEmail(destinatario, assunto, texto, html);
   }
 

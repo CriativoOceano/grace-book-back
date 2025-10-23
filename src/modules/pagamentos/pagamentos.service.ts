@@ -295,6 +295,9 @@ export class PagamentosService {
       (dadosCobranca as any).externalId = idempotencyKey;
       
       
+      this.logger.log(`🔄 Enviando requisição para ASAAS - URL: ${this.apiUrl}/checkouts`);
+      this.logger.log(`🔄 Dados da cobrança: ${JSON.stringify(dadosCobranca, null, 2)}`);
+      
       const cobranca = await firstValueFrom(
         this.httpService.post(
           `${this.apiUrl}/checkouts`,
@@ -307,8 +310,20 @@ export class PagamentosService {
           },
         ),
       ).catch(error => {
+        this.logger.error(`❌ Erro na requisição para ASAAS:`);
+        this.logger.error(`❌ Status: ${error.response?.status}`);
+        this.logger.error(`❌ Status Text: ${error.response?.statusText}`);
+        this.logger.error(`❌ Headers: ${JSON.stringify(error.response?.headers)}`);
+        this.logger.error(`❌ Data: ${JSON.stringify(error.response?.data)}`);
+        this.logger.error(`❌ Config: ${JSON.stringify(error.config)}`);
+        this.logger.error(`❌ Message: ${error.message}`);
+        this.logger.error(`❌ Code: ${error.code}`);
         throw error;
       });
+      
+      this.logger.log(`✅ Resposta do ASAAS recebida com sucesso:`);
+      this.logger.log(`✅ Status: ${cobranca.status}`);
+      this.logger.log(`✅ Data: ${JSON.stringify(cobranca.data)}`);
       
 
       const cobrancaCriada = await this.pagamentoRepository.createPagamento({
@@ -334,7 +349,26 @@ export class PagamentosService {
 
       return cobrancaCriada;
     } catch (error) {
-      this.logger.error(`Erro ao criar cobrança: ${error}`);
+      this.logger.error(`❌ Erro ao criar cobrança:`);
+      this.logger.error(`❌ Tipo do erro: ${error.constructor.name}`);
+      this.logger.error(`❌ Mensagem: ${error.message}`);
+      this.logger.error(`❌ Stack trace: ${error.stack}`);
+      
+      // Log específico para erros HTTP
+      if (error.response) {
+        this.logger.error(`❌ Status HTTP: ${error.response.status}`);
+        this.logger.error(`❌ Status Text: ${error.response.statusText}`);
+        this.logger.error(`❌ Headers: ${JSON.stringify(error.response.headers)}`);
+        this.logger.error(`❌ Data: ${JSON.stringify(error.response.data)}`);
+      }
+      
+      // Log específico para erros de rede/timeout
+      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        this.logger.error(`❌ ERRO DE REDE/TIMEOUT detectado`);
+        this.logger.error(`❌ Código do erro: ${error.code}`);
+        this.logger.error(`❌ URL do ASAAS: ${this.apiUrl}`);
+        this.logger.error(`❌ Verificar conectividade com o ASAAS`);
+      }
       
       // Verificar se é erro de idempotência (cobrança já existe)
       if (error.response?.status === 409 || 

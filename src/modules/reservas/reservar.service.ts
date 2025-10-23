@@ -53,7 +53,23 @@ export class ReservasService {
       });
       return result;
     } catch (error) {
-      this.logger.error(`Erro na transação: ${error.message}`);
+      this.logger.error(`❌ Erro na transação:`);
+      this.logger.error(`❌ Tipo do erro: ${error.constructor.name}`);
+      this.logger.error(`❌ Mensagem: ${error.message}`);
+      this.logger.error(`❌ Stack trace: ${error.stack}`);
+      
+      // Log específico para erros de email
+      if (error.message.includes('Falha ao enviar email')) {
+        this.logger.error(`❌ ERRO DE EMAIL detectado na transação`);
+        this.logger.error(`❌ Verificar configurações de SMTP e conectividade`);
+      }
+      
+      // Log específico para erros de pagamento
+      if (error.message.includes('Erro ao criar cobrança') || error.message.includes('ASAAS')) {
+        this.logger.error(`❌ ERRO DE PAGAMENTO detectado na transação`);
+        this.logger.error(`❌ Verificar conectividade com ASAAS e configurações de API`);
+      }
+      
       throw error;
     } finally {
       await session.endSession();
