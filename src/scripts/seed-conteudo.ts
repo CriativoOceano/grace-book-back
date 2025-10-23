@@ -4,7 +4,6 @@ import { ConfiguracaoModel } from '../schemas/config.schema';
 import { getModelToken } from '@nestjs/mongoose';
 
 async function seedConteudo() {
-  console.log('🌱 Iniciando seed do conteúdo do site...');
 
   try {
     const app = await NestFactory.createApplicationContext(AppModule);
@@ -14,19 +13,16 @@ async function seedConteudo() {
     const configExistente = await configuracaoModel.findOne();
     
     if (configExistente) {
-      console.log('✅ Configuração já existe no banco de dados');
       
       // Verificar se já tem conteúdo do site
       if (configExistente.conteudoSite && 
           configExistente.conteudoSite.heroSlides && 
           configExistente.conteudoSite.heroSlides.length > 0) {
-        console.log('✅ Conteúdo do site já está populado');
         await app.close();
         return;
       }
       
       // Atualizar configuração existente com conteúdo do site
-      console.log('🔄 Atualizando configuração existente com conteúdo do site...');
       configExistente.conteudoSite = {
         heroSlides: [
           {
@@ -126,18 +122,13 @@ async function seedConteudo() {
       };
       
       await configExistente.save();
-      console.log('✅ Conteúdo do site adicionado à configuração existente');
     } else {
-      console.log('🔄 Criando nova configuração com conteúdo do site...');
       await configuracaoModel.getConfig();
-      console.log('✅ Nova configuração criada com conteúdo do site');
     }
 
     await app.close();
-    console.log('🎉 Seed do conteúdo do site concluído com sucesso!');
     
   } catch (error) {
-    console.error('❌ Erro durante o seed:', error);
     process.exit(1);
   }
 }

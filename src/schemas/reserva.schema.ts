@@ -70,6 +70,12 @@ export class Reserva {
   @Prop({ required: true, type: Number, min: 1 })
   valorTotal: number;
 
+  @Prop({ type: Number })
+  valorDiaria: number;
+
+  @Prop({ type: Number })
+  valorDiariaComChale: number;
+
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Pagamento' })
   pagamento: Pagamento;
 

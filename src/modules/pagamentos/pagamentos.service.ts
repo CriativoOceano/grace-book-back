@@ -4,6 +4,7 @@ import {
   HttpException,
   HttpStatus,
   NotFoundException,
+  BadRequestException,
   Inject,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -26,7 +27,7 @@ import { EmailsService } from '../emails/email.service';
 import { CalculoReservaService } from '../shared/services/reservaProcesso/calcular-reserva.service';
 import { CreateReservaDto } from '../reservas/DTO/create-reserva.dto';
 import { StatusReserva } from '../reservas/reserva.enums';
-import { ReservaEmailData } from '../emails/templates/reserva-confirmacao.template';
+import { ReservaEmailData, ReservaCanceladaEmailData } from '../emails/templates/reserva-confirmacao.template';
 import { CONFIGURACOES_REPOSITORY } from '../configuracoes/repositories/configuracaoes-repository.provider';
 import { IConfiguracoesRepository } from '../configuracoes/repositories/interfaces/reserva-repository.interface';
 import * as fs from 'fs';
@@ -68,9 +69,7 @@ export class PagamentosService {
    */
   private async executarMigracaoDados(): Promise<void> {
     try {
-      this.logger.log('🔄 Executando migração de dados de pagamentos...');
       await this.pagamentoRepository.migrarDadosExistentes();
-      this.logger.log('✅ Migração de dados concluída com sucesso');
     } catch (error) {
       this.logger.error(`❌ Erro na migração de dados: ${error.message}`);
     }
@@ -89,7 +88,6 @@ export class PagamentosService {
       const timestamp = new Date().toISOString();
       fs.appendFileSync(logPath, `[${timestamp}] ${message}\n`);
     } catch (error) {
-      console.error('Erro ao escrever log:', error);
     }
   }
 
@@ -126,7 +124,6 @@ export class PagamentosService {
         notificationDisabled: false,
       };
       
-      this.logger.log(`Criando cliente no ASAAS: ${JSON.stringify(dadosCliente)}`);
       
       const novoCliente = await firstValueFrom(
         this.httpService.post(
@@ -195,7 +192,6 @@ export class PagamentosService {
       const pagamentoExistente = pagamentosExistentes[0];
       
       if (pagamentoExistente.asaasPagamentoId && pagamentoExistente.status !== StatusPagamento.CANCELADO) {
-        this.logger.log(`Cobrança já existe para reserva ${reservaId}, retornando dados existentes`);
         
         // Consultar status atual no ASAAS
         try {
@@ -221,7 +217,6 @@ export class PagamentosService {
 
     // Verificar se já existe cobrança no ASAAS pela chave de idempotência ANTES de tentar criar
     const idempotencyKey = uuidv4(); // Gerar UUID único para esta tentativa de cobrança
-    this.logger.log(`Gerando chave de idempotência UUID: ${idempotencyKey}`);
     
     // Verificar se já existe cobrança no ASAAS pela chave de idempotência
     try {
@@ -238,11 +233,9 @@ export class PagamentosService {
       
       if (buscaPrevia.data.data && buscaPrevia.data.data.length > 0) {
         const checkoutExistente = buscaPrevia.data.data[0];
-        this.logger.log(`Cobrança já existe no ASAAS: ${checkoutExistente.id}`);
         
         // Criar registro de pagamento no banco se não existir
         if (!pagamentosExistentes || pagamentosExistentes.length === 0) {
-          this.logger.log(`Criando registro de pagamento para cobrança existente: ${checkoutExistente.id}`);
           await this.pagamentoRepository.createPagamento({
             reservaId: reserva,
             status: StatusPagamento.PENDENTE,
@@ -264,7 +257,6 @@ export class PagamentosService {
         };
       }
     } catch (buscaError) {
-      this.logger.log(`Nenhuma cobrança encontrada no ASAAS para chave: ${idempotencyKey}`);
       // Continuar com a criação da nova cobrança
     }
 
@@ -291,7 +283,6 @@ export class PagamentosService {
       // Calcular valor da reserva
       const valorTotaldaReserva =
         await this.calculoReservaService.getValorReserva(reservaData);
-      // console.log(valorTotaldaReserva); return
       dadosPagamento.valorDiaria = valorTotaldaReserva.valorDiaria;
       dadosPagamento.valorDiariaComChale =
         valorTotaldaReserva.valorDiariaComChale;
@@ -299,12 +290,10 @@ export class PagamentosService {
 
       const dadosCobranca = await this.buildDadosPagamento(reserva, dadosPagamento);
 
-      console.log(dadosCobranca, 'DADOS COBRANCA');
       
       // Usar UUID como chave de idempotência
       (dadosCobranca as any).externalId = idempotencyKey;
       
-      this.logger.log(`Criando cobrança no ASAAS: ${JSON.stringify(dadosCobranca)}`);
       
       const cobranca = await firstValueFrom(
         this.httpService.post(
@@ -317,7 +306,10 @@ export class PagamentosService {
             },
           },
         ),
-      );
+      ).catch(error => {
+        throw error;
+      });
+      
 
       const cobrancaCriada = await this.pagamentoRepository.createPagamento({
         reservaId: reserva,
@@ -347,7 +339,6 @@ export class PagamentosService {
       // Verificar se é erro de idempotência (cobrança já existe)
       if (error.response?.status === 409 || 
           error.response?.data?.errors?.some((e: any) => e.code === 'DUPLICATE_EXTERNAL_ID')) {
-        this.logger.log(`Cobrança já existe para reserva ${reservaId}, retornando dados existentes`);
         
         // Aguardar um pouco para garantir que a primeira requisição tenha terminado
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -359,7 +350,6 @@ export class PagamentosService {
           
           // Se ainda não tem asaasPagamentoId, aguardar mais um pouco
           if (!pagamento.asaasPagamentoId) {
-            this.logger.log(`Pagamento encontrado mas sem asaasPagamentoId, aguardando...`);
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Buscar novamente
@@ -384,7 +374,6 @@ export class PagamentosService {
         }
         
         // Se ainda não encontrou, tentar buscar pela chave de idempotência
-        this.logger.log(`Tentando buscar cobrança pela chave de idempotência: ${idempotencyKey}`);
         
         // Buscar no ASAAS pela chave de idempotência
         try {
@@ -401,12 +390,10 @@ export class PagamentosService {
           
           if (buscaAsaas.data.data && buscaAsaas.data.data.length > 0) {
             const checkoutExistente = buscaAsaas.data.data[0];
-            this.logger.log(`Cobrança encontrada no ASAAS: ${checkoutExistente.id}`);
             
             // Criar registro de pagamento no banco se não existir
             const pagamentoExistente = await this.pagamentoRepository.findByReservaId(reservaId);
             if (!pagamentoExistente || pagamentoExistente.length === 0) {
-              this.logger.log(`Criando registro de pagamento para cobrança existente: ${checkoutExistente.id}`);
               await this.pagamentoRepository.createPagamento({
                 reservaId: reserva,
                 status: StatusPagamento.PENDENTE,
@@ -564,8 +551,6 @@ export class PagamentosService {
    */
   async processarWebhook(payload: any): Promise<void> {
     try {
-      this.logger.log(`🔄 PROCESSANDO WEBHOOK ASAAS`);
-      this.logger.log(`📋 Payload: ${JSON.stringify(payload, null, 2)}`);
 
       // Determinar o tipo de payload (checkout ou payment)
       let checkoutId: string;
@@ -591,7 +576,6 @@ export class PagamentosService {
             status = StatusPagamento.CANCELADO;
             break;
           default:
-            this.logger.log(`Evento de checkout desconhecido: ${eventType}`);
             return;
         }
       }
@@ -601,7 +585,6 @@ export class PagamentosService {
         checkoutId = payload.payment.checkoutSession || payload.payment.id;
         eventType = payload.event;
         
-        this.logger.log(`Webhook de payment - CheckoutSession: ${payload.payment.checkoutSession}, Payment ID: ${payload.payment.id}`);
         
         switch (eventType) {
           case 'PAYMENT_RECEIVED':
@@ -618,7 +601,6 @@ export class PagamentosService {
             status = StatusPagamento.CANCELADO;
             break;
           default:
-            this.logger.log(`Evento de payment desconhecido: ${eventType}`);
             return;
         }
       }
@@ -638,19 +620,15 @@ export class PagamentosService {
         throw new Error('ID de checkout/payment não encontrado no payload');
       }
 
-      this.logger.log(`Processando webhook - ID: ${checkoutId}, Evento: ${eventType}, Status: ${status}`);
 
       // Buscar pagamento por qualquer ID do ASAAS (checkout session ou payment)
       let pagamento = await this.pagamentoRepository.findByAsaasId(checkoutId);
-      console.log('Pagamento encontrado:', pagamento);
       
       // Se não encontrou e é um webhook de payment, tentar buscar pelo checkoutSession
       if (!pagamento && payload.payment?.checkoutSession && payload.payment?.id) {
-        this.logger.log(`Tentando buscar pelo checkoutSession: ${payload.payment.checkoutSession}`);
         pagamento = await this.pagamentoRepository.findByCheckoutSessionId(payload.payment.checkoutSession);
         
         if (pagamento) {
-          this.logger.log(`Pagamento encontrado pelo checkoutSession: ${payload.payment.checkoutSession}`);
         }
       }
       
@@ -700,7 +678,6 @@ export class PagamentosService {
       // Se o webhook contém um Payment ID e ainda não foi salvo, salvar agora
       if (payload.payment?.id && !pagamento.asaasPaymentId) {
         updateData.asaasPaymentId = payload.payment.id;
-        this.logger.log(`Salvando Payment ID: ${payload.payment.id} para o pagamento ${pagamento._id}`);
       }
 
       await this.pagamentoRepository.updatePagamento(pagamento._id.toString(), updateData);
@@ -712,7 +689,6 @@ export class PagamentosService {
           StatusReserva.CONFIRMADA,
           `Pagamento confirmado via ASAAS - Evento: ${eventType}`,
         );
-        this.logger.log(`✅ Reserva ${reserva.codigo} confirmada - Pagamento processado`);
 
         // Enviar email de confirmação de pagamento
         try {
@@ -733,7 +709,9 @@ export class PagamentosService {
           };
 
           await this.emailsService.enviarEmailReservaConfirmada(emailData);
-          this.logger.log(`✅ Email de confirmação de pagamento enviado para ${reserva.usuarioEmail}`);
+
+          // Enviar email de notificação para o administrador
+          await this.emailsService.enviarEmailNotificacaoAdministrador(emailData);
         } catch (emailError) {
           this.logger.error(`❌ Erro ao enviar email de confirmação: ${emailError.message}`);
           // Não falhar o processamento do webhook por erro de email
@@ -764,6 +742,28 @@ export class PagamentosService {
         
         this.logger.warn(`🚨 Reserva ${reserva.codigo} cancelada - Motivo: ${motivoCancelamento}`);
         
+        // Enviar email específico de reserva cancelada
+        try {
+          const emailData: ReservaCanceladaEmailData = {
+            nome: reserva.usuarioNome,
+            codigoReserva: reserva.codigo,
+            dataInicio: reserva.dataInicio.toISOString(),
+            dataFim: reserva.dataFim.toISOString(),
+            tipo: reserva.tipo,
+            quantidadePessoas: reserva.quantidadePessoas,
+            quantidadeChales: reserva.quantidadeChales,
+            quantidadeDiarias: reserva.quantidadeDiarias,
+            valorTotal: reserva.valorTotal,
+            motivoCancelamento: motivoCancelamento,
+            dadosHospede: reserva.dadosHospede
+          };
+
+          await this.emailsService.enviarReservaCancelada(emailData);
+        } catch (emailError) {
+          this.logger.error(`❌ Erro ao enviar email de reserva cancelada: ${emailError.message}`);
+          // Não falhar o processamento do webhook por erro de email
+        }
+        
         // Log específico para pagamentos expirados
         if (eventType === 'CHECKOUT_EXPIRED' || eventType === 'PAYMENT_OVERDUE' || 
             (eventType === 'PAYMENT_STATUS_CHANGE' && payload.status === 'OVERDUE')) {
@@ -773,6 +773,8 @@ export class PagamentosService {
 
       // Enviar notificação por email
       try {
+        const linkPagamento = status === StatusPagamento.PENDENTE ? pagamento.linkPagamento : undefined;
+        
         await this.emailsService.enviarNotificacaoPagamento(
           reserva.usuarioEmail, // Usando o email armazenado diretamente na reserva
           reserva.usuarioNome, // Usando o nome armazenado diretamente na reserva
@@ -782,15 +784,13 @@ export class PagamentosService {
             : status === StatusPagamento.CANCELADO
               ? 'cancelado'
               : 'pendente',
+          linkPagamento
         );
       } catch (emailError) {
         // Apenas registramos o erro de email, mas não interrompemos o processamento
         this.logger.error(`Erro ao enviar email: ${emailError.message}`);
       }
 
-      this.logger.log(
-        `Webhook processado com sucesso: ${reserva.codigo}, status: ${status}`,
-      );
     } catch (error) {
       this.logger.error(`Erro ao processar webhook: ${error.message}`);
       // Registrar o erro detalhado, incluindo o payload
@@ -811,7 +811,6 @@ export class PagamentosService {
    */
   async verificarECancelarPagamentosExpirados(): Promise<void> {
     try {
-      this.logger.log('🔄 Verificando pagamentos expirados...');
       
       // Buscar pagamentos pendentes há mais de 30 minutos
       const trintaMinutosAtras = new Date(Date.now() - 30 * 60 * 1000);
@@ -819,7 +818,6 @@ export class PagamentosService {
       const pagamentosExpirados = await (this.pagamentoRepository as any).findPagamentosExpirados(trintaMinutosAtras);
       
       if (pagamentosExpirados.length === 0) {
-        this.logger.log('✅ Nenhum pagamento expirado encontrado');
         return;
       }
       
@@ -873,7 +871,6 @@ export class PagamentosService {
         }
       }
       
-      this.logger.log(`✅ Verificação de pagamentos expirados concluída`);
       
     } catch (error) {
       this.logger.error(`Erro na verificação de pagamentos expirados: ${error.message}`);
@@ -925,6 +922,9 @@ export class PagamentosService {
 
     // Preparar dados do cliente para o ASAAS
     const customerData = this.buildCustomerData(reserva);
+    
+    // Descrição principal da cobrança
+    const descricaoPrincipal = `Reserva #${reserva.codigo}`;
 
     switch (dadosPagamento.modoPagamento) {
       case ModoPagamento.PIX:
@@ -932,6 +932,7 @@ export class PagamentosService {
           billingTypes: [modoAsaas],
           chargeTypes: ['DETACHED'],
           minutesToExpire: 15,
+          description: descricaoPrincipal,
           callback: {
             cancelUrl: `${this.frontendBaseUrl}/payment-success?status=cancelado`,
             expiredUrl: `${this.frontendBaseUrl}/payment-success?status=expirado`,
@@ -946,6 +947,7 @@ export class PagamentosService {
             billingTypes: [modoAsaas],
             chargeTypes: ['DETACHED', 'INSTALLMENT'],
             minutesToExpire: 10,
+            description: descricaoPrincipal,
             callback: {
               cancelUrl: `${this.frontendBaseUrl}/payment-success?status=cancelado`,
               expiredUrl: `${this.frontendBaseUrl}/payment-success?status=expirado`,
@@ -963,6 +965,7 @@ export class PagamentosService {
           billingTypes: [modoAsaas],
           chargeTypes: ['DETACHED'],
           minutesToExpire: 10,
+          description: descricaoPrincipal,
           callback: {
             cancelUrl: `${this.frontendBaseUrl}/payment-success?status=cancelado`,
             expiredUrl: `${this.frontendBaseUrl}/payment-success?status=expirado`,
@@ -982,23 +985,27 @@ export class PagamentosService {
 
   private async gerarItens(reserva: Reserva, dadosPagamento: IDadosPagamento) {
     const itens = [];
+    
+    // Padrão de descrição com código da reserva
+    const descricaoPadrao = `Reserva #${reserva.codigo}`;
 
     // 🔍 DEBUG: Log dos dados da reserva
-    console.log('🔍 DEBUG - Dados da reserva para gerar itens:', {
+    const debugData = {
       tipo: reserva.tipo,
       quantidadePessoas: reserva.quantidadePessoas,
       quantidadeChales: reserva.quantidadeChales,
       quantidadeDiarias: reserva.quantidadeDiarias,
       dataInicio: reserva.dataInicio,
-      dataFim: reserva.dataFim
-    });
+      dataFim: reserva.dataFim,
+      codigo: reserva.codigo
+    };
 
     switch (reserva.tipo) {
       case 'diaria':
         // Item base para a diária
         itens.push({
           name:  reserva.quantidadeDiarias > 1 ? 'Diárias' : 'Diária',
-          description: `Diária para ${reserva.quantidadePessoas} pessoas`,
+          description: `${descricaoPadrao} - Diária para ${reserva.quantidadePessoas} pessoas`,
           quantity: reserva.quantidadeDiarias,
           value: dadosPagamento.valorDiaria,
         });
@@ -1011,8 +1018,8 @@ export class PagamentosService {
           
           itens.push({
             name: 'Chalés',
-            description: reserva.quantidadeChales > 1 ? `${reserva.quantidadeChales} chalés adicionais por ${reserva.quantidadeDiarias} dia(s)` 
-              : `${reserva.quantidadeChales} chalé adicional por ${reserva.quantidadeDiarias} dia(s)`,
+            description: `${descricaoPadrao} - ${reserva.quantidadeChales > 1 ? `${reserva.quantidadeChales} chalés adicionais por ${reserva.quantidadeDiarias} dia(s)` 
+              : `${reserva.quantidadeChales} chalé adicional por ${reserva.quantidadeDiarias} dia(s)`}`,
             quantity: reserva.quantidadeChales * reserva.quantidadeDiarias,
             value: valorChalePorDia,
           });
@@ -1022,7 +1029,7 @@ export class PagamentosService {
       case 'chale':
         itens.push({
           name: 'Chalés',
-          description: `${reserva.quantidadeChales} chalé(s) por ${reserva.quantidadeDiarias} dia(s)`,
+          description: `${descricaoPadrao} - ${reserva.quantidadeChales} chalé(s) por ${reserva.quantidadeDiarias} dia(s)`,
           quantity: reserva.quantidadeChales, // Já incluímos o cálculo na description
           value: dadosPagamento.valorDiaria,
         });
@@ -1031,7 +1038,7 @@ export class PagamentosService {
       case 'batismo':
         itens.push({
           name: 'Batismo',
-          description: `Serviço de batismo para ${reserva.quantidadePessoas} pessoas`,
+          description: `${descricaoPadrao} - Serviço de batismo para ${reserva.quantidadePessoas} pessoas`,
           quantity: 1,
           value: dadosPagamento.valorTotal,
         });
@@ -1039,8 +1046,7 @@ export class PagamentosService {
     }
     
     // 🔍 DEBUG: Log dos itens gerados
-    console.log('🔍 DEBUG - Itens gerados para ASAAS:', itens);
-    
+    const debugItens = itens;
     return itens;
   }
 
@@ -1050,10 +1056,6 @@ export class PagamentosService {
   private buildCustomerData(reserva: Reserva): any {
     const customerData: any = {};
 
-    this.logger.log(`DEBUG: Construindo customerData para reserva ${reserva.codigo}`);
-    this.logger.log(`DEBUG: Dados do hóspede: ${JSON.stringify(reserva.dadosHospede)}`);
-    this.logger.log(`DEBUG: Dados do hóspede endereco: ${reserva.dadosHospede?.endereco}`);
-    this.logger.log(`DEBUG: Dados do hóspede uf: ${reserva.dadosHospede?.uf}`);
 
     // Nome completo (nome + sobrenome)
     if (reserva.dadosHospede?.nome && reserva.dadosHospede?.sobrenome) {
@@ -1084,42 +1086,33 @@ export class PagamentosService {
     // Endereço (se disponível nos dados do hóspede)
     if (reserva.dadosHospede?.endereco) {
       customerData.address = reserva.dadosHospede.endereco;
-      this.logger.log(`DEBUG: Adicionando address: ${reserva.dadosHospede.endereco}`);
     } else {
-      this.logger.log(`DEBUG: Endereço não encontrado nos dados do hóspede`);
     }
 
     if (reserva.dadosHospede?.numero) {
       customerData.addressNumber = reserva.dadosHospede.numero;
-      this.logger.log(`DEBUG: Adicionando addressNumber: ${reserva.dadosHospede.numero}`);
     }
 
     if (reserva.dadosHospede?.cep) {
       customerData.postalCode = reserva.dadosHospede.cep.replace(/\D/g, '');
-      this.logger.log(`DEBUG: Adicionando postalCode: ${reserva.dadosHospede.cep}`);
     }
 
     // Bairro (province no ASAAS)
     if (reserva.dadosHospede?.bairro) {
       customerData.province = reserva.dadosHospede.bairro;
-      this.logger.log(`DEBUG: Adicionando province (bairro): ${reserva.dadosHospede.bairro}`);
     }
 
     // Cidade
     if (reserva.dadosHospede?.cidade) {
       customerData.city = reserva.dadosHospede.cidade;
-      this.logger.log(`DEBUG: Adicionando city: ${reserva.dadosHospede.cidade}`);
     }
 
     // Estado/UF (state no ASAAS)
     if (reserva.dadosHospede?.uf) {
       customerData.state = reserva.dadosHospede.uf;
-      this.logger.log(`DEBUG: Adicionando state (UF): ${reserva.dadosHospede.uf}`);
     } else {
-      this.logger.log(`DEBUG: UF não encontrado nos dados do hóspede`);
     }
 
-    this.logger.log(`DEBUG: CustomerData construído: ${JSON.stringify(customerData)}`);
 
     // Retornar apenas os campos que foram preenchidos
     return Object.keys(customerData).length > 0 ? customerData : undefined;
@@ -1134,5 +1127,158 @@ export class PagamentosService {
       Math.ceil(diferencaMS / (1000 * 60 * 60 * 24)),
     );
     return diferencaDias;
+  }
+
+  /**
+   * Processar estorno de pagamento via ASAAS
+   */
+  async processarEstornoPagamento(
+    pagamentoId: string,
+    valor?: number,
+    descricao?: string
+  ): Promise<any> {
+    try {
+      // 1. Buscar dados do pagamento
+      const pagamento = await this.pagamentoRepository.findById(pagamentoId);
+      if (!pagamento) {
+        throw new NotFoundException('Pagamento não encontrado');
+      }
+
+      // 2. Verificar se pode ser estornado
+      await this.validarElegibilidadeEstorno(pagamento);
+
+      // 3. Determinar endpoint baseado no tipo de pagamento
+      const endpoint = this.determinarEndpointEstorno(pagamento);
+      
+      // 4. Processar estorno via ASAAS
+      const estorno = await this.chamarApiEstorno(endpoint, pagamento, valor, descricao);
+      
+      // 5. Atualizar status do pagamento
+      await this.pagamentoRepository.updatePagamento(pagamentoId, {
+        status: StatusPagamento.ESTORNADO,
+        estorno: {
+          id: estorno.id,
+          valor: estorno.value || estorno.valor || 0,
+          dataEstorno: new Date(estorno.dateCreated || new Date()),
+          status: estorno.status || 'ESTORNADO',
+          descricao: estorno.description || descricao
+        }
+      });
+      
+      
+      // Retornar dados padronizados
+      return {
+        id: estorno.id,
+        value: estorno.value || estorno.valor || 0,
+        valor: estorno.value || estorno.valor || 0,
+        dateCreated: estorno.dateCreated || new Date().toISOString(),
+        dataEstorno: new Date(estorno.dateCreated || new Date()),
+        status: estorno.status || 'ESTORNADO',
+        description: estorno.description || descricao
+      };
+
+    } catch (error) {
+      this.logger.error(`Erro ao processar estorno: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Determinar endpoint de estorno baseado no tipo de pagamento
+   */
+  private determinarEndpointEstorno(pagamento: any): string {
+    // Se for parcelamento (cartão parcelado)
+    if (pagamento.tipoPagamento === 'PARCELADO' && pagamento.parcelas > 1) {
+      if (!pagamento.asaasInstallmentId) {
+        throw new BadRequestException('ID do parcelamento ASAAS não encontrado');
+      }
+      return `/v3/installments/${pagamento.asaasInstallmentId}/refund`;
+    }
+    
+    // Se for cobrança simples (PIX, cartão à vista, boleto)
+    if (!pagamento.asaasPagamentoId) {
+      throw new BadRequestException('ID do pagamento ASAAS não encontrado');
+    }
+    return `/v3/payments/${pagamento.asaasPagamentoId}/refund`;
+  }
+
+  /**
+   * Chamar API de estorno da ASAAS
+   */
+  private async chamarApiEstorno(
+    endpoint: string,
+    pagamento: any,
+    valor?: number,
+    descricao?: string
+  ): Promise<any> {
+    
+    const dadosEstorno = {
+      value: valor,
+      description: descricao || `Estorno da reserva - ${pagamento.reservaId}`,
+      scheduleDate: new Date().toISOString()
+    };
+
+    try {
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.apiUrl}${endpoint}`,
+          dadosEstorno,
+          {
+            headers: {
+              access_token: this.apiKey,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+      );
+
+      return response.data;
+
+    } catch (error) {
+      this.logger.error(`❌ Erro na API ASAAS: ${error.response?.data || error.message}`);
+      throw new BadRequestException(`Erro ao processar estorno via ASAAS: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Validar elegibilidade para estorno
+   */
+  private async validarElegibilidadeEstorno(pagamento: any): Promise<void> {
+    
+    // Verificar se pagamento foi confirmado
+    if (pagamento.status !== StatusPagamento.CONFIRMADO && 
+        pagamento.status !== StatusPagamento.RECEBIDO && 
+        pagamento.status !== StatusPagamento.PAGO) {
+      this.logger.error(`❌ Status inválido para estorno: ${pagamento.status}`);
+      throw new BadRequestException(`Pagamento não pode ser estornado - Status inválido: ${pagamento.status}`);
+    }
+
+    // Verificar se já foi estornado
+    if (pagamento.status === StatusPagamento.ESTORNADO) {
+      throw new BadRequestException('Pagamento já foi estornado');
+    }
+
+    // Verificar prazo para estorno
+    if (pagamento.dataPagamento) {
+      const dataPagamento = new Date(pagamento.dataPagamento);
+      const hoje = new Date();
+      const diasDiferenca = Math.floor((hoje.getTime() - dataPagamento.getTime()) / (1000 * 60 * 60 * 24));
+
+      // PIX: até 90 dias
+      if (pagamento.modoPagamento === ModoPagamento.PIX && diasDiferenca > 90) {
+        throw new BadRequestException('PIX não pode ser estornado após 90 dias');
+      }
+
+      // Cartão de crédito: até 180 dias
+      if (pagamento.modoPagamento === ModoPagamento.CREDIT_CARD && diasDiferenca > 180) {
+        throw new BadRequestException('Cartão de crédito não pode ser estornado após 180 dias');
+      }
+
+      // Boleto: não elegível para estorno
+      if (pagamento.modoPagamento === ModoPagamento.BOLETO) {
+        throw new BadRequestException('Boleto não é elegível para estorno automático');
+      }
+    }
   }
 }

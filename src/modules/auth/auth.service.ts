@@ -29,7 +29,6 @@ export class AuthService {
       }
       return null;
     } catch (error) {
-      console.error('Erro ao validar usuário:', error);
     }
   }
 
@@ -120,7 +119,6 @@ export class AuthService {
       const configuracao = await this.configuracoesService.findAll();
       return await bcrypt.compare(codigo, configuracao.adminAccessCode);
     } catch (error) {
-      console.error('Erro ao validar código admin:', error);
       return false;
     }
   }

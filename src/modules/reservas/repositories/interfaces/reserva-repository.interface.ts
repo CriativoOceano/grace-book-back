@@ -2,7 +2,7 @@ import { Reserva, ReservaDocument } from "src/schemas/reserva.schema";
 
 export interface IReservaRepository {
   findAll(): Promise<Reserva[]>;
-  findByUser(userId: string): Promise<ReservaDocument[]>;
+  findByUser(userId: string): Promise<Reserva[]>;
   findById(id: string): Promise<ReservaDocument>;
   findByCodigo(codigoReserva: string): Promise<ReservaDocument>;
   findByCodigoAndEmail(codigo: string, email: string): Promise<ReservaDocument>;

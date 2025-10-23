@@ -18,7 +18,6 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     const user = await this.authService.validateUser(identificador, password);
     if (!user) {
       // Log para entender onde falhous
-      console.log('Falha na autenticação');
       throw new UnauthorizedException('Credenciais inválidas');
     }
     return user;

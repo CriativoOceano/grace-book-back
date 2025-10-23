@@ -16,18 +16,30 @@ export class ReservaRepository implements IReservaRepository {
   ) {}
 
   async findAll(): Promise<Reserva[]> {
-    return this.reservaModel
+    const reservas = await this.reservaModel
       .find()
       .populate('usuario')
       .sort({ createdAt: -1 })
       .exec();
+    
+    // Converter _id para id para compatibilidade com frontend
+    return reservas.map(reserva => ({
+      ...reserva.toObject(),
+      id: reserva._id.toString()
+    }));
   }
 
-  async findByUser(userId: string): Promise<ReservaDocument[]> {
-    return this.reservaModel
+  async findByUser(userId: string): Promise<Reserva[]> {
+    const reservas = await this.reservaModel
       .find({ usuario: userId })
       .sort({ createdAt: -1 })
       .exec();
+    
+    // Converter _id para id para compatibilidade com frontend
+    return reservas.map(reserva => ({
+      ...reserva.toObject(),
+      id: reserva._id.toString()
+    }));
   }
 
   async findById(id: string, options = {}): Promise<ReservaDocument> {
@@ -85,7 +97,6 @@ export class ReservaRepository implements IReservaRepository {
 
   createReserva(data: Partial<Reserva>, options = {}): Promise<Reserva> {
     const reserva = new this.reservaModel(data, options);
-    console.log(reserva.usuario);
     return reserva.save();
   }
 
@@ -180,9 +191,15 @@ export class ReservaRepository implements IReservaRepository {
    * Busca reservas confirmadas para bloquear datas no calendário
    */
   async findReservasConfirmadas(): Promise<any[]> {
-    return this.reservaModel
+    const reservas = await this.reservaModel
       .find({ statusReserva: 'CONFIRMADA' })
       .select('dataInicio dataFim tipo')
       .exec();
+    
+    // Converter _id para id para compatibilidade com frontend
+    return reservas.map(reserva => ({
+      ...reserva.toObject(),
+      id: reserva._id.toString()
+    }));
   }
 }

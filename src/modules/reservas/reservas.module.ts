@@ -3,10 +3,12 @@ import { ReservasController } from './controllers/reservas.controller';
 import { ReservasService } from './reservar.service';
 import { SharedModule } from '../modules';
 import { reservaRepositoryProvider } from './repositories/reserva-repository.provider';
+import { ConfiguracoesModule } from '../configuracoes/configuracoes.module';
 
 @Module({
   imports: [
-    SharedModule
+    SharedModule,
+    ConfiguracoesModule
   ],
   controllers: [ReservasController],
   providers: [ReservasService],

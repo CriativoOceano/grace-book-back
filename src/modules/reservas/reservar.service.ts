@@ -19,8 +19,10 @@ import { StatusPagamento } from '../pagamentos/pagamento.enums';
 import { StatusReserva, TipoReserva } from './reserva.enums';
 import { EmailsService } from '../emails/email.service';
 import { CalculoReservaService } from '../shared/services/reservaProcesso/calcular-reserva.service';
-import { ConfiguracoesRepository } from '../configuracoes/repositories/configuracoes.repository';
+import { CONFIGURACOES_REPOSITORY } from '../configuracoes/repositories/configuracaoes-repository.provider';
+import { IConfiguracoesRepository } from '../configuracoes/repositories/interfaces/reserva-repository.interface';
 import { ReservaEmailData } from '../emails/templates/reserva-confirmacao.template';
+import { Inject } from '@nestjs/common';
 
 @Injectable()
 export class ReservasService {
@@ -32,6 +34,8 @@ export class ReservasService {
     private readonly emailsService: EmailsService,
     private readonly reservaProcessoService: ReservaProcessoService,
     private readonly calculoReservaService: CalculoReservaService,
+    @Inject(CONFIGURACOES_REPOSITORY)
+    private readonly configuracoesRepository: IConfiguracoesRepository,
   ) {}
 
   /**
@@ -210,7 +214,6 @@ export class ReservasService {
         dataAtualizacao: new Date(),
       };
 
-      console.log(novaReserva.usuario);
       const reservaCriada =
         await this.reservaProcessoService.processarNovaReserva(novaReserva);
 
@@ -735,6 +738,9 @@ export class ReservasService {
   ): Promise<{ dadosValidados: CreateReservaDto; alertasSeguranca: string[] }> {
     const alertasSeguranca: string[] = [];
     
+    // Carregar configurações para validações dinâmicas
+    const config = await this.configuracoesRepository.findAll();
+    
     // 1. Recalcular quantidade de diárias baseado nas datas
     const quantidadeDiariasCalculada = await this.getQtdDias(
       dadosFrontend.dataInicio,
@@ -749,16 +755,16 @@ export class ReservasService {
       this.logger.warn(`Usuário: ${userId}, Data início: ${dadosFrontend.dataInicio}, Data fim: ${dadosFrontend.dataFim}`);
     }
     
-    // 3. Validar limites de quantidade de pessoas
-    if (dadosFrontend.quantidadePessoas && (dadosFrontend.quantidadePessoas < 1 || dadosFrontend.quantidadePessoas > 200)) {
-      const alerta = `⚠️ SEGURANÇA: Quantidade de pessoas inválida! Frontend enviou: ${dadosFrontend.quantidadePessoas}`;
+    // 3. Validar limites de quantidade de pessoas baseado nas configurações
+    if (dadosFrontend.quantidadePessoas && (dadosFrontend.quantidadePessoas < 1 || dadosFrontend.quantidadePessoas > config.qtdMaxPessoas)) {
+      const alerta = `⚠️ SEGURANÇA: Quantidade de pessoas inválida! Frontend enviou: ${dadosFrontend.quantidadePessoas}, Máximo permitido: ${config.qtdMaxPessoas}`;
       alertasSeguranca.push(alerta);
       this.logger.warn(alerta);
     }
     
-    // 4. Validar limites de quantidade de chalés
-    if (dadosFrontend.quantidadeChales && (dadosFrontend.quantidadeChales < 0 || dadosFrontend.quantidadeChales > 4)) {
-      const alerta = `⚠️ SEGURANÇA: Quantidade de chalés inválida! Frontend enviou: ${dadosFrontend.quantidadeChales}`;
+    // 4. Validar limites de quantidade de chalés baseado nas configurações
+    if (dadosFrontend.quantidadeChales && (dadosFrontend.quantidadeChales < 0 || dadosFrontend.quantidadeChales > config.quantidadeMaximaChales)) {
+      const alerta = `⚠️ SEGURANÇA: Quantidade de chalés inválida! Frontend enviou: ${dadosFrontend.quantidadeChales}, Máximo permitido: ${config.quantidadeMaximaChales}`;
       alertasSeguranca.push(alerta);
       this.logger.warn(alerta);
     }
@@ -799,5 +805,214 @@ export class ReservasService {
     }
     
     return { dadosValidados, alertasSeguranca };
+  }
+
+  /**
+   * Obter detalhes completos de uma reserva
+   */
+  async getDetalhesReserva(reservaId: string): Promise<any> {
+    try {
+      const reserva = await this.reservaModel
+        .findById(reservaId)
+        .populate('usuario')
+        .populate('pagamento')
+        .exec();
+
+      if (!reserva) {
+        throw new NotFoundException('Reserva não encontrada');
+      }
+
+      // Buscar dados do pagamento se existir
+      let dadosPagamento = null;
+      if (reserva.pagamento) {
+        dadosPagamento = {
+          id: (reserva.pagamento as any)._id,
+          status: reserva.pagamento.status,
+          modoPagamento: reserva.pagamento.modoPagamento,
+          valor: reserva.pagamento.valorTotal || reserva.pagamento.valor,
+          parcelas: reserva.pagamento.qtdParcelas || reserva.pagamento.parcelas,
+          valorTotal: reserva.pagamento.valorTotal,
+          qtdParcelas: reserva.pagamento.qtdParcelas,
+          asaasPagamentoId: reserva.pagamento.asaasPagamentoId,
+          asaasInstallmentId: reserva.pagamento.asaasInstallmentId,
+          linkPagamento: reserva.pagamento.linkPagamento,
+          dataPagamento: reserva.pagamento.dataPagamento,
+          estorno: reserva.pagamento.estorno
+        };
+      }
+
+      const resultado = {
+        // Dados básicos da reserva
+        id: reserva._id,
+        codigo: reserva.codigo,
+        codigoAcesso: reserva.codigoAcesso,
+        tipo: reserva.tipo,
+        statusReserva: reserva.statusReserva,
+        
+        // Datas
+        dataInicio: reserva.dataInicio,
+        dataFim: reserva.dataFim,
+        quantidadeDiarias: reserva.quantidadeDiarias,
+        
+        // Capacidade
+        quantidadePessoas: reserva.quantidadePessoas,
+        quantidadeChales: reserva.quantidadeChales,
+        
+        // Valores
+        valorTotal: reserva.valorTotal,
+        valorDiaria: reserva.valorDiaria,
+        valorDiariaComChale: reserva.valorDiariaComChale,
+        
+        // Dados do cliente
+        usuario: {
+          id: (reserva.usuario as any)._id,
+          nome: reserva.usuario.nome,
+          sobrenome: reserva.usuario.sobrenome,
+          email: reserva.usuario.email,
+          telefone: reserva.usuario.telefone,
+          cpf: reserva.usuario.cpf
+        },
+        
+        // Pagamento
+        pagamento: dadosPagamento,
+        
+        // Histórico
+        historico: reserva.historico || [],
+        
+        // Observações
+        observacoes: reserva.observacoes,
+        
+        // Datas de controle
+        dataCriacao: reserva.dataCriacao,
+        dataAtualizacao: reserva.dataAtualizacao,
+        createdAt: (reserva as any).createdAt,
+        updatedAt: (reserva as any).updatedAt
+      };
+      
+      return resultado;
+    } catch (error) {
+      this.logger.error(`Erro ao obter detalhes da reserva ${reservaId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancelar reserva com possibilidade de estorno
+   */
+  async cancelarReservaComEstorno(
+    reservaId: string,
+    motivo: string,
+    estornarPagamento: boolean = false,
+    valorEstorno?: number
+  ): Promise<{ reserva: any; estorno?: any }> {
+    
+    try {
+      // 1. Buscar reserva e pagamento
+      const reserva = await this.reservaModel
+        .findById(reservaId)
+        .populate('usuario')
+        .populate('pagamento')
+        .exec();
+
+        if (!reserva) {
+          throw new NotFoundException('Reserva não encontrada');
+        }
+
+        // 2. Verificar se pode ser cancelada
+        if (reserva.statusReserva === StatusReserva.CANCELADA) {
+          throw new BadRequestException('Reserva já está cancelada');
+        }
+
+        if (reserva.statusReserva === StatusReserva.UTILIZADA) {
+          throw new BadRequestException('Reserva já foi utilizada e não pode ser cancelada');
+        }
+
+        // 3. Processar estorno se solicitado e aplicável
+        let estorno = null;
+        if (estornarPagamento && reserva.pagamento) {
+          try {
+            estorno = await this.reservaProcessoService.processarEstornoPagamento(
+              ((reserva.pagamento as any)._id).toString(),
+              valorEstorno,
+              `Cancelamento da reserva ${reserva.codigo} - ${motivo}`
+            );
+            this.logger.log(`✅ Estorno processado para reserva ${reserva.codigo}: R$ ${estorno?.value || 'N/A'}`);
+          } catch (estornoError) {
+            this.logger.error(`❌ Erro ao processar estorno para reserva ${reserva.codigo}: ${estornoError.message}`);
+            // Continuar com cancelamento mesmo se estorno falhar
+            estorno = { error: estornoError.message };
+          }
+        }
+
+        // 4. Atualizar status da reserva
+        const historicoAtualizado = [
+          ...(reserva.historico || []),
+          {
+            data: new Date(),
+            acao: 'CANCELADA',
+            detalhes: motivo,
+            estorno: estorno ? {
+              valor: estorno.value,
+              data: estorno.dateCreated,
+              status: estorno.status,
+              id: estorno.id
+            } : null
+          }
+        ];
+
+        const reservaCancelada = await this.reservaModel
+          .findByIdAndUpdate(
+            reservaId,
+            {
+              statusReserva: StatusReserva.CANCELADA,
+              historico: historicoAtualizado,
+              dataAtualizacao: new Date()
+            },
+            { new: true }
+          )
+          .populate('usuario')
+          .populate('pagamento')
+          .exec();
+
+        // 5. Liberar disponibilidade
+        await this.liberarDisponibilidadeReserva(reserva);
+
+        // 6. Enviar email de cancelamento
+        try {
+          await this.emailsService.enviarEmailCancelamento(reserva, motivo, estorno);
+        } catch (emailError) {
+          this.logger.error(`Erro ao enviar email de cancelamento: ${emailError.message}`);
+          // Não falhar o cancelamento por erro de email
+        }
+
+        this.logger.log(`✅ Reserva ${reserva.codigo} cancelada com sucesso. Motivo: ${motivo}`);
+
+        return { 
+          reserva: reservaCancelada, 
+          estorno: estorno || null 
+        };
+
+    } catch (error) {
+      this.logger.error(`Erro ao cancelar reserva ${reservaId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Liberar disponibilidade de uma reserva cancelada
+   */
+  private async liberarDisponibilidadeReserva(reserva: any): Promise<void> {
+    try {
+      // Aqui você pode implementar a lógica para liberar a disponibilidade
+      // Por exemplo, remover bloqueios de datas ou atualizar configurações
+      this.logger.log(`📅 Liberando disponibilidade para reserva ${reserva.codigo}`);
+      
+      // Implementar lógica específica conforme sua regra de negócio
+      // Por enquanto, apenas log
+      
+    } catch (error) {
+      this.logger.error(`Erro ao liberar disponibilidade: ${error.message}`);
+      // Não falhar o cancelamento por erro na liberação de disponibilidade
+    }
   }
 }

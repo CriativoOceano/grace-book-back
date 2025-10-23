@@ -34,8 +34,6 @@ export class ReservasController {
 
   @Post('publico')
   createPublico(@Body() createReservaDto: CreateReservaDto) {
-    console.log('🔍 CONTROLLER - Dados recebidos:', JSON.stringify(createReservaDto, null, 2));
-    console.log('🔍 CONTROLLER - dadosHospede:', JSON.stringify(createReservaDto.dadosHospede, null, 2));
     return this.reservasService.createPublico(createReservaDto);
   }
 
@@ -110,14 +108,24 @@ export class ReservasController {
     // return this.reservasService.update(id, updateReservaDto, req.user.id);
   }
 
+  @Get(':id/detalhes')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async getDetalhesReserva(@Param('id') id: string) {
+    return this.reservasService.getDetalhesReserva(id);
+  }
+
   @Post(':id/cancelar')
-  @UseGuards(JwtAuthGuard)
-  cancelar(
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async cancelarReserva(
     @Param('id') id: string,
-    @Body('motivo') motivo: string,
-    @Request() req,
+    @Body() dadosCancelamento: { motivo: string; estornarPagamento?: boolean; valorEstorno?: number },
   ) {
-    // return this.reservasService.cancelar(id, req.user.id, motivo);
+    return this.reservasService.cancelarReservaComEstorno(
+      id,
+      dadosCancelamento.motivo,
+      dadosCancelamento.estornarPagamento || false,
+      dadosCancelamento.valorEstorno
+    );
   }
 
   @Post('disponibilidade')

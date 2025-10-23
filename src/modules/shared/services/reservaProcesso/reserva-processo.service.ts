@@ -164,4 +164,15 @@ export class ReservaProcessoService {
     );
     return diferencaDias;
   }
+
+  /**
+   * Processar estorno de pagamento
+   */
+  async processarEstornoPagamento(
+    pagamentoId: string,
+    valor?: number,
+    descricao?: string
+  ): Promise<any> {
+    return this.pagamentoService.processarEstornoPagamento(pagamentoId, valor, descricao);
+  }
 }

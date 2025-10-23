@@ -29,7 +29,16 @@ export class Pagamento {
   valorTotal: number;
 
   @Prop({type: Number})
+  valor: number;
+
+  @Prop({type: Number})
   qtdParcelas: number;
+
+  @Prop({type: Number})
+  parcelas: number;
+
+  @Prop({ type: String })
+  asaasInstallmentId: string;
 
   @Prop({ type: Date})
   dataPagamento: Date;
@@ -39,6 +48,9 @@ export class Pagamento {
 
   @Prop({ type: Object })
   detalhes: any;
+
+  @Prop({ type: Object })
+  estorno: any;
 
   @Prop({required: true})
   linkPagamento: string;

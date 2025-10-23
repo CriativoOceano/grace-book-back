@@ -96,6 +96,5 @@ UsuarioSchema.methods.compararSenha = async function(senha: string): Promise<boo
   try {
     return await bcrypt.compare(senha, this.senha);
   } catch (error) {
-    console.error('Erro ao comparar senha:', error);
   }
 };

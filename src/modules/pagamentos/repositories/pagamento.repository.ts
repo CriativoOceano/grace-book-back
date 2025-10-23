@@ -22,6 +22,10 @@ export class PagamentoRepository implements IPagamentoRepository {
     return this.pagamentoModel.findById(id).exec();
   }
 
+  async findById(id: string): Promise<Pagamento | null> {
+    return this.pagamentoModel.findById(id).exec();
+  }
+
   async findByReservaId(reservaId: string): Promise<Pagamento[]> {
     // Converte string para ObjectId se necessário
     const objectId = this.isValidObjectId(reservaId)
