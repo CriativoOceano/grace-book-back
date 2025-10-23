@@ -51,6 +51,7 @@ import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
   exports: [
     MongooseModule,
     HttpModule,
+    EmailsModule,
     
     ReservaRepository,
     PagamentoRepository,
