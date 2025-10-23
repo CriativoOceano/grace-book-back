@@ -18,7 +18,6 @@ export class EmailsService {
     const port = this.configService.get<number>('EMAIL_PORT');
     const user = this.configService.get<string>('EMAIL_USER');
     const pass = this.configService.get<string>('EMAIL_PASS');
-    const fromEmail = this.configService.get<string>('EMAIL_FROM') || 'anderson.asp.si@gmail.com';
 
     // Verificar se estamos em ambiente de desenvolvimento
     const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
@@ -38,49 +37,67 @@ export class EmailsService {
 
       this.logger.log('Usando Mailtrap para testes de email em desenvolvimento');
     } else if (host && port && user && pass) {
-      // Em produção, use as configurações reais
+      // Em produção, use APENAS as variáveis de ambiente
       this.transporter = nodemailer.createTransport({
         host,
         port,
-        secure: port === 465,
+        secure: port === 465, // true para 465, false para outras portas
         auth: {
           user,
           pass,
         },
         // Configurações específicas para Brevo
         tls: {
-          rejectUnauthorized: false
-        }
+          rejectUnauthorized: false,
+          ciphers: 'SSLv3'
+        },
+        // Configurações de timeout para evitar travamentos
+        connectionTimeout: 60000, // 60 segundos
+        greetingTimeout: 30000,   // 30 segundos
+        socketTimeout: 60000,     // 60 segundos
+        // Configurações de pool para melhor performance
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 100,
+        rateLimit: 14, // máximo 14 emails por segundo
       });
 
       this.logger.log(`Servidor de email configurado para produção: ${host}:${port}`);
     } else {
-      this.logger.warn('Configurações de email não encontradas, usando console para log de emails');
+      // Em produção, se não tiver todas as variáveis, falhar explicitamente
+      this.logger.error('❌ ERRO: Variáveis de ambiente de email não configuradas em produção!');
+      this.logger.error('Variáveis necessárias: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS');
       
-      // Transporter "fake" que apenas loga as mensagens
-      this.transporter = {
-        sendMail: async (mailOptions) => {
-          this.logger.log('Email que seria enviado:');
-          this.logger.log(`De: ${mailOptions.from}`);
-          this.logger.log(`Para: ${mailOptions.to}`);
-          this.logger.log(`Assunto: ${mailOptions.subject}`);
-          this.logger.log(`Conteúdo: ${mailOptions.text || mailOptions.html}`);
-          
-          return {
-            messageId: `fake-${Date.now()}`,
-            accepted: [mailOptions.to],
-            rejected: [],
-            pending: [],
-            response: 'Email simulado apenas para log'
-          };
-        },
-      } as any;
+      throw new Error('Configurações de email não encontradas para produção. Configure as variáveis de ambiente: EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS');
+    }
+  }
+
+  /**
+   * Testa a conexão com o servidor de email
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.transporter.verify();
+      this.logger.log('✅ Conexão com servidor de email verificada com sucesso');
+      return true;
+    } catch (error) {
+      this.logger.error('❌ Erro ao verificar conexão com servidor de email:', error.message);
+      return false;
     }
   }
 
   async enviarEmail(destinatario: string, assunto: string, texto?: string, html?: string) {
     try {
-      const fromEmail = this.configService.get<string>('EMAIL_FROM') || 'reservas@chacaradaigreja.com.br';
+      // Em produção, usar APENAS variável de ambiente para EMAIL_FROM
+      const isDevMode = this.configService.get<string>('NODE_ENV') !== 'production';
+      const fromEmail = isDevMode 
+        ? this.configService.get<string>('EMAIL_FROM') || 'reservas@chacaradaigreja.com.br'
+        : this.configService.get<string>('EMAIL_FROM');
+      
+      // Em produção, se não tiver EMAIL_FROM configurado, falhar
+      if (!isDevMode && !fromEmail) {
+        throw new Error('EMAIL_FROM não configurado em produção. Configure a variável de ambiente EMAIL_FROM');
+      }
       
       const mailOptions: nodemailer.SendMailOptions = {
         from: `"Sede Campestre" <${fromEmail}>`,
