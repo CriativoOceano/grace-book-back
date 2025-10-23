@@ -16,7 +16,6 @@ import { Usuario, UsuarioSchema } from 'src/schemas/usuario.schema';
 import { ConfigService } from '@nestjs/config';
 import { PagamentosService } from './pagamentos/pagamentos.service';
 import { PagamentoRepository } from './pagamentos/repositories/pagamento.repository';
-import { EmailsService } from './emails/email.service';
 import { CalculoReservaService } from './shared/services/reservaProcesso/calcular-reserva.service';
 import { configuracoesRepositoryProvider } from './configuracoes/repositories/configuracaoes-repository.provider';
 import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
@@ -44,7 +43,6 @@ import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
     configuracoesRepositoryProvider,
   
     UsuariosService,
-    EmailsService,
     ConfigService,
     PagamentosService,
     ReservaProcessoService,
@@ -63,7 +61,6 @@ import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
 
     UsuariosService,
     PagamentosService,
-    EmailsService,
     ConfigService,
     ReservaProcessoService,
     CalculoReservaService,

@@ -9,7 +9,7 @@ import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
-import { EmailsService } from '../emails/email.service';
+import { EmailsModule } from '../emails/email.module';
 
 @Module({
   imports: [
@@ -17,7 +17,7 @@ import { EmailsService } from '../emails/email.service';
     ConfiguracoesModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     ConfigModule,
-    // EmailsModule,
+    EmailsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -30,7 +30,7 @@ import { EmailsService } from '../emails/email.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, EmailsService],
+  providers: [AuthService, LocalStrategy, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}
