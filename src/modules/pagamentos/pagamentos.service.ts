@@ -726,8 +726,16 @@ export class PagamentosService {
             );
             break;
           case 'PAYMENT_DELETED':
-          case 'PAYMENT_REFUNDED':
             status = StatusPagamento.CANCELADO;
+            break;
+          case 'PAYMENT_REFUNDED':
+            // Estorno é um estado próprio, diferente de cancelado — o
+            // dinheiro voltou pro cliente, não é só que a cobrança sumiu.
+            // Esse webhook normalmente chega DEPOIS que o admin já pediu o
+            // estorno pelo painel (que já marca ESTORNADO na hora, de
+            // forma síncrona); antes desse fix, esse evento reescrevia o
+            // status de volta pra CANCELADO quando chegava.
+            status = StatusPagamento.ESTORNADO;
             break;
           default:
             return;
@@ -843,6 +851,45 @@ export class PagamentosService {
         updateData.asaasPaymentId = payload.payment.id;
       }
 
+      // Pagamento parcelado: o ID do parcelamento (asaasInstallmentId,
+      // necessário pra montar a URL de estorno em
+      // determinarEndpointEstorno) NUNCA vem preenchido na criação da
+      // Checkout Session — a resposta de criação só ecoa a configuração
+      // enviada (maxInstallmentCount), sem gerar um ID de verdade (é assim
+      // mesmo na API do Asaas). O ID real só existe depois que o cliente
+      // paga, e o formato exato de onde ele aparece no payload do webhook
+      // varia (evento "checkout" vs. evento "payment" mais antigo). Em vez
+      // de arriscar não capturar isso, buscamos direto na API assim que
+      // soubermos o ID do pagamento: GET /v3/payments/{id} sempre traz o
+      // campo "installment" quando o pagamento faz parte de um
+      // parcelamento — confirmado direto contra o sandbox.
+      const paymentIdConhecido =
+        updateData.asaasPaymentId || pagamento.asaasPaymentId;
+      if (
+        pagamento.qtdParcelas > 1 &&
+        !pagamento.asaasInstallmentId &&
+        paymentIdConhecido
+      ) {
+        try {
+          const paymentDetalhado = await firstValueFrom(
+            this.httpService.get(
+              `${this.apiUrl}/payments/${paymentIdConhecido}`,
+              {
+                headers: { access_token: this.apiKey },
+                timeout: ASAAS_TIMEOUT_MS,
+              },
+            ),
+          );
+          if (paymentDetalhado.data?.installment) {
+            updateData.asaasInstallmentId = paymentDetalhado.data.installment;
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Não foi possível buscar o installment ID do pagamento ${paymentIdConhecido}: ${error.message}`,
+          );
+        }
+      }
+
       await this.pagamentoRepository.updatePagamento(
         pagamento._id.toString(),
         updateData,
@@ -920,8 +967,6 @@ export class PagamentosService {
             'Pagamento vencido - Status alterado para OVERDUE';
         } else if (eventType === 'PAYMENT_DELETED') {
           motivoCancelamento = 'Pagamento deletado no ASAAS';
-        } else if (eventType === 'PAYMENT_REFUNDED') {
-          motivoCancelamento = 'Pagamento reembolsado';
         }
 
         await this.reservaRepository.atualizarStatus(
@@ -969,6 +1014,47 @@ export class PagamentosService {
             `⏰ PAGAMENTO EXPIRADO - Reserva: ${reserva.codigo}, ID: ${checkoutId}, Evento: ${eventType}`,
           );
         }
+      } else if (status === StatusPagamento.ESTORNADO) {
+        // Normalmente a reserva já foi cancelada de forma síncrona pelo
+        // admin (cancelarReservaComEstorno), antes desse webhook chegar —
+        // nesse caso não há nada a fazer aqui além de já ter deixado o
+        // pagamento como ESTORNADO acima. Só cancelamos a reserva e
+        // avisamos o cliente aqui se o estorno tiver acontecido por fora do
+        // nosso fluxo (ex.: direto no painel do Asaas), caso em que a
+        // reserva ainda estaria ativa.
+        if (reserva.statusReserva !== StatusReserva.CANCELADA) {
+          await this.reservaRepository.atualizarStatus(
+            reserva._id.toString(),
+            StatusReserva.CANCELADA,
+            `Pagamento estornado via ASAAS - Evento: ${eventType}`,
+          );
+
+          this.logger.warn(
+            `🚨 Reserva ${reserva.codigo} cancelada - Motivo: Pagamento estornado`,
+          );
+
+          try {
+            const emailData: ReservaCanceladaEmailData = {
+              nome: reserva.usuarioNome,
+              codigoReserva: reserva.codigo,
+              dataInicio: reserva.dataInicio.toISOString(),
+              dataFim: reserva.dataFim.toISOString(),
+              tipo: reserva.tipo,
+              quantidadePessoas: reserva.quantidadePessoas,
+              quantidadeChales: reserva.quantidadeChales,
+              quantidadeDiarias: reserva.quantidadeDiarias,
+              valorTotal: reserva.valorTotal,
+              motivoCancelamento: 'Pagamento estornado',
+              dadosHospede: reserva.dadosHospede,
+            };
+
+            await this.emailsService.enviarReservaCancelada(emailData);
+          } catch (emailError) {
+            this.logger.error(
+              `❌ Erro ao enviar email de reserva cancelada: ${emailError.message}`,
+            );
+          }
+        }
       }
 
       // Enviar notificação por email
@@ -984,7 +1070,8 @@ export class PagamentosService {
           reserva.codigo,
           status === StatusPagamento.PAGO
             ? 'pago'
-            : status === StatusPagamento.CANCELADO
+            : status === StatusPagamento.CANCELADO ||
+                status === StatusPagamento.ESTORNADO
               ? 'cancelado'
               : 'pendente',
           linkPagamento,
@@ -1251,7 +1338,7 @@ export class PagamentosService {
       RECEIVED: StatusPagamento.PAGO,
       CONFIRMED: StatusPagamento.PAGO,
       OVERDUE: StatusPagamento.CANCELADO, // ✅ Corrigido: Pagamentos vencidos devem ser cancelados
-      REFUNDED: StatusPagamento.CANCELADO,
+      REFUNDED: StatusPagamento.ESTORNADO,
       RECEIVED_IN_CASH: StatusPagamento.PAGO,
       REFUND_REQUESTED: StatusPagamento.PENDENTE,
       CHARGEBACK_REQUESTED: StatusPagamento.PENDENTE,
@@ -1304,16 +1391,12 @@ export class PagamentosService {
     // Preparar dados do cliente para o ASAAS
     const customerData = this.buildCustomerData(reserva);
 
-    // Descrição principal da cobrança
-    const descricaoPrincipal = `Reserva #${reserva.codigo}`;
-
     switch (dadosPagamento.modoPagamento) {
       case ModoPagamento.PIX:
         return {
           billingTypes: [modoAsaas],
           chargeTypes: ['DETACHED'],
           minutesToExpire: 30,
-          description: descricaoPrincipal,
           callback: this.buildCallbackUrls(reserva.codigo),
           items: await this.gerarItens(reserva, dadosPagamento),
           customerData: customerData,
@@ -1324,7 +1407,6 @@ export class PagamentosService {
             billingTypes: [modoAsaas],
             chargeTypes: ['DETACHED', 'INSTALLMENT'],
             minutesToExpire: 30,
-            description: descricaoPrincipal,
             callback: this.buildCallbackUrls(reserva.codigo),
             items: await this.gerarItens(reserva, dadosPagamento),
             installment: {
@@ -1338,7 +1420,6 @@ export class PagamentosService {
           billingTypes: [modoAsaas],
           chargeTypes: ['DETACHED'],
           minutesToExpire: 30,
-          description: descricaoPrincipal,
           callback: this.buildCallbackUrls(reserva.codigo),
           items: await this.gerarItens(reserva, dadosPagamento),
           customerData: customerData,
@@ -1355,8 +1436,13 @@ export class PagamentosService {
   private async gerarItens(reserva: Reserva, dadosPagamento: IDadosPagamento) {
     const itens = [];
 
-    // Padrão de descrição com código da reserva
-    const descricaoPadrao = `Reserva #${reserva.codigo}`;
+    // A API de Checkout do Asaas não tem campo "description" na raiz do
+    // payload (foi removido de buildDadosPagamento — era ignorado
+    // silenciosamente). A descrição que realmente aparece no painel/fatura
+    // do Asaas vem de items[].description, por isso incluímos código e
+    // datas da reserva aqui.
+    const periodo = `${reserva.dataInicio.toLocaleDateString('pt-BR')} a ${reserva.dataFim.toLocaleDateString('pt-BR')}`;
+    const descricaoPadrao = `Reserva #${reserva.codigo} - ${periodo}`;
 
     // 🔍 DEBUG: Log dos dados da reserva
     const debugData = {
@@ -1530,37 +1616,67 @@ export class PagamentosService {
 
       // 5. Atualizar status do pagamento
       //
+      // IMPORTANTE: a resposta de /v3/payments/{id}/refund e de
+      // /v3/installments/{id}/refund NÃO tem um "status do estorno" na
+      // raiz. A raiz é a cobrança (ou o parcelamento) inteiro — pra
+      // cobrança simples, `estorno.status` na raiz é o status da COBRANÇA
+      // (ex.: "REFUNDED"), não do estorno; pro parcelamento, a raiz nem
+      // tem campo `status`. O status de cada estorno de verdade (PENDING /
+      // AWAITING_CRITICAL_ACTION_AUTHORIZATION / CANCELLED / DONE) vive
+      // dentro do array `refunds[]` (ver docs.asaas.com/reference/
+      // estornar-cobranca e /estornar-parcelamento). Usar a raiz aqui
+      // fazia o estorno de parcelamento ser sempre marcado como concluído
+      // na hora (raiz sem `status` → tratado como "sem status" → dado como
+      // pronto), mesmo quando o Asaas devolvia PENDING/aguardando
+      // autorização — e fazia o estorno de cobrança simples NUNCA ser
+      // marcado como concluído (raiz vinha "REFUNDED", nunca "DONE").
+      const ultimoEstorno =
+        Array.isArray(estorno.refunds) && estorno.refunds.length > 0
+          ? estorno.refunds[estorno.refunds.length - 1]
+          : null;
+
       // O estorno de parcelamento no ASAAS não é necessariamente síncrono:
       // a resposta pode voltar como PENDING ou aguardando autorização, não
-      // só DONE (ver docs.asaas.com/reference/refund-installment). Só
-      // marcamos o pagamento como ESTORNADO quando o ASAAS já confirmou
-      // "DONE" — do contrário ficaríamos dizendo pro admin e pro cliente
-      // que o dinheiro já voltou quando na verdade ainda está em
+      // só DONE. Só marcamos o pagamento como ESTORNADO quando o ASAAS já
+      // confirmou "DONE" — do contrário ficaríamos dizendo pro admin e pro
+      // cliente que o dinheiro já voltou quando na verdade ainda está em
       // processamento (pode levar até 10 dias úteis para cair no cartão).
       // Estornos de PIX/pagamento avulso (não-parcelado) sempre voltam
       // como DONE de forma síncrona, então isso não muda o comportamento
       // pra eles.
-      const estornoConcluido = !estorno.status || estorno.status === 'DONE';
+      const statusEstorno = ultimoEstorno?.status || 'DONE';
+      const estornoConcluido = statusEstorno === 'DONE';
+      const valorEstornado =
+        ultimoEstorno?.value ?? estorno.value ?? estorno.valor ?? 0;
+      const dataEstorno = new Date(
+        ultimoEstorno?.dateCreated || estorno.dateCreated || new Date(),
+      );
+      const descricaoEstorno =
+        ultimoEstorno?.description || estorno.description || descricao;
+
       await this.pagamentoRepository.updatePagamento(pagamentoId, {
         ...(estornoConcluido ? { status: StatusPagamento.ESTORNADO } : {}),
         estorno: {
+          // O Asaas não devolve um ID próprio de estorno em refunds[] — só
+          // temos o ID da cobrança/parcelamento (útil como referência pra
+          // achar isso de novo no painel do Asaas).
           id: estorno.id,
-          valor: estorno.value || estorno.valor || 0,
-          dataEstorno: new Date(estorno.dateCreated || new Date()),
-          status: estorno.status || 'DONE',
-          descricao: estorno.description || descricao,
+          valor: valorEstornado,
+          dataEstorno,
+          status: statusEstorno,
+          descricao: descricaoEstorno,
         },
       });
 
       // Retornar dados padronizados
       return {
         id: estorno.id,
-        value: estorno.value || estorno.valor || 0,
-        valor: estorno.value || estorno.valor || 0,
-        dateCreated: estorno.dateCreated || new Date().toISOString(),
-        dataEstorno: new Date(estorno.dateCreated || new Date()),
-        status: estorno.status || 'ESTORNADO',
-        description: estorno.description || descricao,
+        value: valorEstornado,
+        valor: valorEstornado,
+        dateCreated: dataEstorno.toISOString(),
+        dataEstorno,
+        status: statusEstorno,
+        description: descricaoEstorno,
       };
     } catch (error) {
       this.logger.error(`Erro ao processar estorno: ${error.message}`);

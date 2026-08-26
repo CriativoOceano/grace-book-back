@@ -22,6 +22,12 @@ export class HistoricoReserva {
 
   @Prop()
   detalhes: string;
+
+  // Nome do admin que executou a ação (ex.: "Admin Master"). Ausente/null
+  // em entradas geradas pelo próprio sistema (cron de expiração, webhook do
+  // Asaas) — nesses casos não há um usuário humano por trás da mudança.
+  @Prop()
+  realizadoPor?: string;
 }
 
 @Schema({ timestamps: true })

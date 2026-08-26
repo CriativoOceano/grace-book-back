@@ -914,7 +914,7 @@ export class ReservasService {
           data: new Date(),
           acao: 'CANCELADA',
           detalhes: motivo,
-          canceladoPor: canceladoPorNome || null,
+          realizadoPor: canceladoPorNome || null,
           estorno: estorno
             ? {
                 valor: estorno.value,
