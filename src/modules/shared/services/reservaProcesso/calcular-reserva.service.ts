@@ -140,6 +140,55 @@ export class CalculoReservaService {
     }
   }
 
+  // Preço de cada dia de um mês, já com o ajuste sazonal aplicado — usado
+  // pelo calendário público pra mostrar o valor da diária em cada dia,
+  // sem o cliente precisar entender por que um dia custa mais que outro.
+  async getPrecosCalendario(params: {
+    ano: number;
+    mes: number; // 1-12
+    tipo: string;
+    quantidadePessoas?: number;
+    quantidadeChales?: number;
+  }): Promise<{ data: string; valor: number }[]> {
+    const config = await this.configuracoesRepository.findAll();
+    const primeiroDia = new Date(Date.UTC(params.ano, params.mes - 1, 1));
+    const ultimoDia = new Date(Date.UTC(params.ano, params.mes, 0));
+    const dias = this.enumerarDias(
+      primeiroDia,
+      ultimoDia.getUTCDate(),
+    );
+    const regrasSazonais = await this.buscarRegrasSazonaisAtivas(
+      dias[0],
+      dias[dias.length - 1],
+    );
+
+    let valorBase = 0;
+    if (params.tipo === 'diaria' || params.tipo === 'completo') {
+      const quantidadePessoas = params.quantidadePessoas || 1;
+      for (const faixa of config.precoDiaria) {
+        if (quantidadePessoas <= faixa.maxPessoas) {
+          valorBase = faixa.valor;
+          break;
+        }
+      }
+      if (params.quantidadeChales) {
+        valorBase += config.precoChale * params.quantidadeChales;
+      }
+    } else if (params.tipo === 'chale') {
+      valorBase = config.precoChale * (params.quantidadeChales || 1);
+    } else if (params.tipo === 'batismo') {
+      valorBase = config.precoBatismo;
+    }
+
+    return dias.map((dia) => {
+      const ajuste = this.encontrarAjusteParaData(regrasSazonais, dia);
+      return {
+        data: this.normalizarData(dia),
+        valor: Math.round(this.aplicarAjuste(valorBase, ajuste) * 100) / 100,
+      };
+    });
+  }
+
   async getQtdDias(dataInicio: Date, dataFim: Date): Promise<number> {
     if (!dataFim) return 1;
 

@@ -845,8 +845,15 @@ export class ReservasService {
           this.logger.error(
             `❌ Erro ao processar estorno para reserva ${reserva.codigo}: ${estornoError.message}`,
           );
-          // Continuar com cancelamento mesmo se estorno falhar
-          estorno = { error: estornoError.message };
+          // O pagamento já foi recebido — se o estorno falha, a reserva
+          // NÃO pode ser cancelada (nem liberar as datas, nem nada mais
+          // abaixo pode rodar). Do contrário o cliente fica sem a reserva
+          // E sem o dinheiro de volta. O admin precisa ver o erro e tentar
+          // de novo, ou resolver manualmente no painel do Asaas antes de
+          // cancelar.
+          throw new BadRequestException(
+            `Não foi possível cancelar: o estorno do pagamento falhou (${estornoError.message}). A reserva continua ativa até o estorno ser concluído com sucesso.`,
+          );
         }
       }
 

@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   BadRequestException,
@@ -14,6 +15,7 @@ import { AdminGuard } from 'src/modules/auth/guards/admin.guard';
 import { CreateReservaDto } from '../DTO/create-reserva.dto';
 import { CotarReservaDto } from '../DTO/cotar-reserva.dto';
 import { VerificarDisponibilidadeDto } from '../DTO/verificar-disponibilidade.dto';
+import { PrecosCalendarioDto } from '../DTO/precos-calendario.dto';
 import { ReservaRepository } from '../repositories/reserva.repository';
 import { CalculoReservaService } from 'src/modules/shared/services/reservaProcesso/calcular-reserva.service';
 
@@ -52,6 +54,13 @@ export class ReservasController {
   @Post('cotar-publico')
   cotarReservaPublico(@Body() cotarReservaDto: CotarReservaDto) {
     return this.calcularReservaService.getValorReserva(cotarReservaDto);
+  }
+
+  // Pública — usada pelo calendário de reservas pra mostrar o valor da
+  // diária em cada dia do mês, já com o ajuste sazonal aplicado.
+  @Get('precos-calendario')
+  precosCalendario(@Query() query: PrecosCalendarioDto) {
+    return this.calcularReservaService.getPrecosCalendario(query);
   }
 
   @Get()

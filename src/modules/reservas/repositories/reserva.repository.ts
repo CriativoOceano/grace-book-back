@@ -19,6 +19,7 @@ export class ReservaRepository implements IReservaRepository {
     const reservas = await this.reservaModel
       .find()
       .populate('usuario')
+      .populate('pagamento')
       .sort({ createdAt: -1 })
       .exec();
 
