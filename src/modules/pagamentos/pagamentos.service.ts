@@ -1630,29 +1630,56 @@ export class PagamentosService {
       // pronto), mesmo quando o Asaas devolvia PENDING/aguardando
       // autorização — e fazia o estorno de cobrança simples NUNCA ser
       // marcado como concluído (raiz vinha "REFUNDED", nunca "DONE").
+      // Estorno de parcelamento: o Asaas processa a reversão parcela por
+      // parcela por baixo dos panos, e `refunds[]` pode vir com UM item por
+      // parcela estornada (não necessariamente um único item agregado com
+      // o total). Pegar só o último item, como fazíamos antes, mostrava só
+      // o valor de uma parcela e dava a impressão de que as outras não
+      // tinham sido estornadas. Por isso somamos todos os itens de
+      // `refunds[]` retornados nesta chamada.
+      const refundsDestaChamada: any[] = Array.isArray(estorno.refunds)
+        ? estorno.refunds
+        : [];
       const ultimoEstorno =
-        Array.isArray(estorno.refunds) && estorno.refunds.length > 0
-          ? estorno.refunds[estorno.refunds.length - 1]
+        refundsDestaChamada.length > 0
+          ? refundsDestaChamada[refundsDestaChamada.length - 1]
           : null;
 
       // O estorno de parcelamento no ASAAS não é necessariamente síncrono:
       // a resposta pode voltar como PENDING ou aguardando autorização, não
-      // só DONE. Só marcamos o pagamento como ESTORNADO quando o ASAAS já
-      // confirmou "DONE" — do contrário ficaríamos dizendo pro admin e pro
-      // cliente que o dinheiro já voltou quando na verdade ainda está em
-      // processamento (pode levar até 10 dias úteis para cair no cartão).
-      // Estornos de PIX/pagamento avulso (não-parcelado) sempre voltam
-      // como DONE de forma síncrona, então isso não muda o comportamento
-      // pra eles.
-      const statusEstorno = ultimoEstorno?.status || 'DONE';
+      // só DONE. Só marcamos o pagamento como ESTORNADO quando TODOS os
+      // itens de refunds[] já confirmaram "DONE" — do contrário ficaríamos
+      // dizendo pro admin e pro cliente que o dinheiro já voltou quando na
+      // verdade ainda está em processamento (pode levar até 10 dias úteis
+      // para cair no cartão). Estornos de PIX/pagamento avulso
+      // (não-parcelado) sempre voltam como DONE de forma síncrona, então
+      // isso não muda o comportamento pra eles.
+      const statusEstorno =
+        refundsDestaChamada.length > 0
+          ? refundsDestaChamada.every((r) => r.status === 'DONE')
+            ? 'DONE'
+            : ultimoEstorno?.status || 'PENDING'
+          : 'DONE';
       const estornoConcluido = statusEstorno === 'DONE';
       const valorEstornado =
-        ultimoEstorno?.value ?? estorno.value ?? estorno.valor ?? 0;
+        refundsDestaChamada.length > 0
+          ? refundsDestaChamada.reduce(
+              (soma, r) => soma + (r.value || 0),
+              0,
+            )
+          : (estorno.value ?? estorno.valor ?? 0);
       const dataEstorno = new Date(
         ultimoEstorno?.dateCreated || estorno.dateCreated || new Date(),
       );
       const descricaoEstorno =
         ultimoEstorno?.description || estorno.description || descricao;
+      // Quantas parcelas essa chamada estornou — usado pelo painel admin
+      // pra deixar explícito "as N parcelas foram estornadas" em vez de só
+      // mostrar um valor total, que dava a impressão de ser uma parcela só.
+      const quantidadeParcelasEstornadas =
+        pagamento.qtdParcelas > 1
+          ? refundsDestaChamada.length || pagamento.qtdParcelas
+          : undefined;
 
       await this.pagamentoRepository.updatePagamento(pagamentoId, {
         ...(estornoConcluido ? { status: StatusPagamento.ESTORNADO } : {}),
@@ -1665,6 +1692,7 @@ export class PagamentosService {
           dataEstorno,
           status: statusEstorno,
           descricao: descricaoEstorno,
+          qtdParcelasEstornadas: quantidadeParcelasEstornadas,
         },
       });
 
@@ -1677,6 +1705,7 @@ export class PagamentosService {
         dataEstorno,
         status: statusEstorno,
         description: descricaoEstorno,
+        qtdParcelasEstornadas: quantidadeParcelasEstornadas,
       };
     } catch (error) {
       this.logger.error(`Erro ao processar estorno: ${error.message}`);
