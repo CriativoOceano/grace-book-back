@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { firstValueFrom } from 'rxjs';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { ReservaRepository } from '../reservas/repositories/reserva.repository';
@@ -45,6 +46,18 @@ import { TipoReserva } from '../reservas/reserva.enums';
 // Timeout para chamadas HTTP ao ASAAS - evita travar a requisição
 // indefinidamente se o gateway de pagamento ficar lento ou não responder.
 const ASAAS_TIMEOUT_MS = 15000;
+
+// Detalhe técnico de uma chamada ao Asaas que falhou (ou não confirmou o
+// resultado esperado), usado só em fluxos admin — nunca inclui a
+// access_token/API key, de propósito, pra não vazar credencial em resposta
+// HTTP nem em log.
+export interface AsaasErrorDetails {
+  method: string;
+  endpoint: string;
+  httpStatus: number | null;
+  asaasResponse: any;
+  originalMessage: string;
+}
 @Injectable()
 export class PagamentosService {
   private readonly logger = new Logger(PagamentosService.name);
@@ -194,14 +207,14 @@ export class PagamentosService {
       const pagamentoExistente = pagamentosExistentes[0];
 
       if (
-        pagamentoExistente.asaasPagamentoId &&
+        pagamentoExistente.asaasCheckoutSessionId &&
         pagamentoExistente.status !== StatusPagamento.CANCELADO
       ) {
         // Consultar status atual no ASAAS
         try {
           const statusPagamento = await this.consultarStatusCobranca(reservaId);
           return {
-            asaasId: pagamentoExistente.asaasPagamentoId,
+            asaasId: pagamentoExistente.asaasCheckoutSessionId,
             status: statusPagamento.status,
             valor: statusPagamento.valor,
             linkPagamento: statusPagamento.linkPagamento,
@@ -209,10 +222,10 @@ export class PagamentosService {
         } catch (error) {
           // Se não conseguir consultar o status, retornar dados do banco
           this.logger.warn(
-            `Não foi possível consultar status da cobrança ${pagamentoExistente.asaasPagamentoId}, retornando dados do banco`,
+            `Não foi possível consultar status da cobrança ${pagamentoExistente.asaasCheckoutSessionId}, retornando dados do banco`,
           );
           return {
-            asaasId: pagamentoExistente.asaasPagamentoId,
+            asaasId: pagamentoExistente.asaasCheckoutSessionId,
             status: pagamentoExistente.status,
             valor: pagamentoExistente.valorTotal,
             linkPagamento: pagamentoExistente.linkPagamento,
@@ -246,7 +259,6 @@ export class PagamentosService {
           await this.pagamentoRepository.createPagamento({
             reservaId: reserva,
             status: StatusPagamento.PENDENTE,
-            asaasPagamentoId: checkoutExistente.id, // Checkout Session ID
             asaasCheckoutSessionId: checkoutExistente.id, // Checkout Session ID
             valorTotal: dadosPagamento.valorTotal,
             linkPagamento: checkoutExistente.link,
@@ -341,7 +353,6 @@ export class PagamentosService {
       const cobrancaCriada = await this.pagamentoRepository.createPagamento({
         reservaId: reserva,
         status: StatusPagamento.PENDENTE,
-        asaasPagamentoId: cobranca.data.id, // Checkout Session ID
         asaasCheckoutSessionId: cobranca.data.id, // Checkout Session ID
         valorTotal: dadosPagamento.valorTotal,
         linkPagamento: cobranca.data.link,
@@ -418,8 +429,8 @@ export class PagamentosService {
         if (cobrancaExistente && cobrancaExistente.length > 0) {
           const pagamento = cobrancaExistente[0];
 
-          // Se ainda não tem asaasPagamentoId, aguardar mais um pouco
-          if (!pagamento.asaasPagamentoId) {
+          // Se ainda não tem asaasCheckoutSessionId, aguardar mais um pouco
+          if (!pagamento.asaasCheckoutSessionId) {
             await new Promise((resolve) => setTimeout(resolve, 2000));
 
             // Buscar novamente
@@ -428,11 +439,11 @@ export class PagamentosService {
             if (
               cobrancaAtualizada &&
               cobrancaAtualizada.length > 0 &&
-              cobrancaAtualizada[0].asaasPagamentoId
+              cobrancaAtualizada[0].asaasCheckoutSessionId
             ) {
               const pagamentoAtualizado = cobrancaAtualizada[0];
               return {
-                asaasId: pagamentoAtualizado.asaasPagamentoId,
+                asaasId: pagamentoAtualizado.asaasCheckoutSessionId,
                 status: pagamentoAtualizado.status,
                 valor: pagamentoAtualizado.valorTotal,
                 linkPagamento: pagamentoAtualizado.linkPagamento,
@@ -441,7 +452,7 @@ export class PagamentosService {
           }
 
           return {
-            asaasId: pagamento.asaasPagamentoId,
+            asaasId: pagamento.asaasCheckoutSessionId,
             status: pagamento.status,
             valor: pagamento.valorTotal,
             linkPagamento: pagamento.linkPagamento,
@@ -474,7 +485,6 @@ export class PagamentosService {
               await this.pagamentoRepository.createPagamento({
                 reservaId: reserva,
                 status: StatusPagamento.PENDENTE,
-                asaasPagamentoId: checkoutExistente.id, // Checkout Session ID
                 asaasCheckoutSessionId: checkoutExistente.id, // Checkout Session ID
                 valorTotal: dadosPagamento.valorTotal,
                 linkPagamento: checkoutExistente.link,
@@ -525,7 +535,7 @@ export class PagamentosService {
   async consultarStatusCobranca(reservaId: string): Promise<any> {
     try {
       const asaasId = (await this.reservaRepository.findById(reservaId))
-        .pagamento.asaasPagamentoId;
+        .pagamento.asaasCheckoutSessionId;
 
       const cobranca = await firstValueFrom(
         this.httpService.get(`${this.apiUrl}/payments/${asaasId}/status`, {
@@ -550,8 +560,8 @@ export class PagamentosService {
       if (reservaId.startsWith('RES')) {
         try {
           const reserva = await this.reservaRepository.findByCodigo(reservaId);
-          if (reserva.pagamento.asaasPagamentoId) {
-            return this.consultarStatusCobranca(reservaId);
+          if (reserva.pagamento.asaasCheckoutSessionId) {
+            return this.consultarStatusCobranca(reserva._id.toString());
           }
         } catch (err) {
           // Ignorar este erro secundário
@@ -566,22 +576,55 @@ export class PagamentosService {
   }
 
   /**
-   * Cancela uma cobrança no ASAAS
+   * Cancela a Checkout Session pendente de uma reserva no ASAAS.
+   *
+   * Importante: isso NÃO é "cancelar uma cobrança" — no Asaas, cobrança
+   * (objeto "payment", pay_*) e Checkout Session são coisas diferentes, e
+   * uma cobrança de verdade só passa a existir depois que o cliente paga
+   * (via webhook). Enquanto o pagamento está PENDENTE só existe a Checkout
+   * Session (o link), então o que dá pra cancelar aqui é ela — não há
+   * cobrança pra cancelar ainda. Se o pagamento já foi recebido, o caminho
+   * correto é estorno (processarEstornoPagamento), não isto.
+   *
+   * Fluxo: identificar o(s) pagamento(s) da reserva na base interna →
+   * validar se cada um ainda está PENDENTE (só faz sentido cancelar o
+   * checkout se ninguém pagou ainda) → solicitar o cancelamento via Asaas →
+   * validar a resposta → atualizar o status do pagamento na base interna.
+   *
+   * Usamos POST /v3/checkouts/{id}/cancel (não DELETE /v3/payments/{id}):
+   * chamar /v3/payments/{id} com o ID da checkout session sempre
+   * retorna 404, porque não existe "payment" nenhum pra esse ID. Best-effort:
+   * se o Asaas falhar aqui (ex.: checkout já expirou ou foi pago numa
+   * corrida com o cancelamento), a reserva ainda assim é cancelada — a rede
+   * de segurança real é a expiração automática do checkout e
+   * recuperarOuEstornarReservaCancelada() no webhook.
    */
-  async cancelarCobranca(reservaId: string): Promise<boolean> {
-    try {
-      const pagamentos =
-        await this.pagamentoRepository.findByReservaId(reservaId);
+  async cancelarCheckoutPendente(
+    reservaId: string,
+  ): Promise<{ sucesso: boolean; avisos: AsaasErrorDetails[] }> {
+    const pagamentos =
+      await this.pagamentoRepository.findByReservaId(reservaId);
+    const avisos: AsaasErrorDetails[] = [];
 
-      for (const pagamento of pagamentos) {
-        if (!pagamento.asaasPagamentoId) {
-          throw new NotFoundException(
-            'Pagamento não encontrado no gateway de pagamentos',
-          );
-        }
-        await firstValueFrom(
-          this.httpService.delete(
-            `${this.apiUrl}/payments/${pagamento.asaasPagamentoId}`,
+    for (const pagamento of pagamentos) {
+      if (pagamento.status !== StatusPagamento.PENDENTE) {
+        continue; // já pago, cancelado ou estornado — nada a fazer aqui
+      }
+
+      if (!pagamento.asaasCheckoutSessionId) {
+        this.logger.warn(
+          `Pagamento ${(pagamento as any)._id} sem checkout session no Asaas — nada para cancelar`,
+        );
+        continue;
+      }
+
+      const endpoint = `${this.apiUrl}/checkouts/${pagamento.asaasCheckoutSessionId}/cancel`;
+
+      try {
+        const cancelamento = await firstValueFrom(
+          this.httpService.post(
+            endpoint,
+            {},
             {
               headers: {
                 access_token: this.apiKey,
@@ -590,18 +633,40 @@ export class PagamentosService {
             },
           ),
         );
-      }
-      return true;
-    } catch (error) {
-      this.logger.error(
-        `Erro ao cancelar cobrança no gateway de pagamentos: ${error.message}`,
-      );
 
-      throw new HttpException(
-        'Erro ao cancelar cobrança no gateway de pagamentos',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+        if (cancelamento.data?.status !== 'CANCELED') {
+          const aviso: AsaasErrorDetails = {
+            method: 'POST',
+            endpoint,
+            httpStatus: cancelamento.status,
+            asaasResponse: cancelamento.data,
+            originalMessage: `Checkout não confirmou CANCELED (retornou: ${cancelamento.data?.status})`,
+          };
+          this.logger.warn(`Checkout ${pagamento.asaasCheckoutSessionId} não confirmou CANCELED (retornou: ${cancelamento.data?.status})`);
+          avisos.push(aviso);
+          continue;
+        }
+
+        await this.pagamentoRepository.updatePagamento(
+          (pagamento as any)._id.toString(),
+          { status: StatusPagamento.CANCELADO },
+        );
+      } catch (error) {
+        const aviso: AsaasErrorDetails = {
+          method: 'POST',
+          endpoint,
+          httpStatus: error.response?.status ?? null,
+          asaasResponse: error.response?.data ?? null,
+          originalMessage: error.message,
+        };
+        this.logger.warn(
+          `Não foi possível cancelar o checkout ${pagamento.asaasCheckoutSessionId} no Asaas: ${error.message}`,
+        );
+        avisos.push(aviso);
+      }
     }
+
+    return { sucesso: avisos.length === 0, avisos };
   }
 
   /**
@@ -1085,6 +1150,11 @@ export class PagamentosService {
     return false;
   }
 
+  // Antes disso só existia um endpoint admin pra chamar isso na mão —
+  // nada rodava sozinho, então uma reserva com pagamento pendente que
+  // ninguém nunca cancelou manualmente ficava segurando a data pra
+  // sempre. Agora roda a cada 5 minutos automaticamente.
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async verificarECancelarPagamentosExpirados(): Promise<void> {
     try {
       // Buscar pagamentos pendentes há mais de 30 minutos
@@ -1519,8 +1589,8 @@ export class PagamentosService {
 
     // Se for cobrança simples (PIX, cartão à vista, boleto).
     //
-    // IMPORTANTE: `asaasPagamentoId` é o ID da Checkout Session (gravado na
-    // criação da cobrança, ver criarCobranca) — não existe um "payment" de
+    // IMPORTANTE: `asaasCheckoutSessionId` é o ID da Checkout Session
+    // (gravado na criação da cobrança, ver criarCobranca) — não existe um "payment" de
     // verdade na Asaas até o cliente efetivamente pagar. O ID do pagamento
     // real só chega depois, via webhook, em `asaasPaymentId`
     // (processarWebhook seta isso a partir de payload.payment.id). Chamar
@@ -1565,12 +1635,29 @@ export class PagamentosService {
 
       return response.data;
     } catch (error) {
+      // Detalhe técnico completo (endpoint, método, ID real usado, status e
+      // corpo da resposta do Asaas) só é usado aqui dentro pra montar o
+      // `asaasError` — nunca inclui a access_token/API key, que fica de
+      // fora de propósito. Esse objeto sobe até o admin (endpoint protegido
+      // por JwtAuthGuard+AdminGuard) pra ele diagnosticar sem precisar ir
+      // no log do servidor; o cliente final nunca chega nesse fluxo, pois
+      // estorno só acontece via cancelamento feito pelo admin.
+      const asaasErrorDetails: AsaasErrorDetails = {
+        method: 'POST',
+        endpoint: `${this.apiUrl}${endpoint}`,
+        httpStatus: error.response?.status ?? null,
+        asaasResponse: error.response?.data ?? null,
+        originalMessage: error.message,
+      };
+
       this.logger.error(
-        `❌ Erro na API ASAAS: ${error.response?.data || error.message}`,
+        `❌ Erro na API ASAAS [POST ${asaasErrorDetails.endpoint}] (status ${asaasErrorDetails.httpStatus}): ${JSON.stringify(asaasErrorDetails.asaasResponse ?? error.message)}`,
       );
-      throw new BadRequestException(
-        `Erro ao processar estorno via ASAAS: ${error.response?.data?.message || error.message}`,
-      );
+
+      throw new BadRequestException({
+        message: `Erro ao processar estorno via ASAAS: ${error.response?.data?.errors?.[0]?.description || error.response?.data?.message || error.message}`,
+        asaasError: asaasErrorDetails,
+      });
     }
   }
 

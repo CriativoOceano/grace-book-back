@@ -719,7 +719,7 @@ export class ReservasService {
           parcelas: reserva.pagamento.qtdParcelas || reserva.pagamento.parcelas,
           valorTotal: reserva.pagamento.valorTotal,
           qtdParcelas: reserva.pagamento.qtdParcelas,
-          asaasPagamentoId: reserva.pagamento.asaasPagamentoId,
+          asaasCheckoutSessionId: reserva.pagamento.asaasCheckoutSessionId,
           asaasInstallmentId: reserva.pagamento.asaasInstallmentId,
           linkPagamento: reserva.pagamento.linkPagamento,
           dataPagamento: reserva.pagamento.dataPagamento,
@@ -793,7 +793,7 @@ export class ReservasService {
     estornarPagamento: boolean = false,
     valorEstorno?: number,
     canceladoPorNome?: string,
-  ): Promise<{ reserva: any; estorno?: any }> {
+  ): Promise<{ reserva: any; estorno?: any; avisos?: any[] }> {
     try {
       // 1. Buscar reserva e pagamento
       const reserva = await this.reservaModel
@@ -842,8 +842,27 @@ export class ReservasService {
             `✅ Estorno processado para reserva ${reserva.codigo}: R$ ${estorno?.value || 'N/A'}`,
           );
         } catch (estornoError) {
+          // Se o erro veio de chamarApiEstorno() ele já carrega um
+          // `asaasError` estruturado (endpoint, método, ID real usado,
+          // status e resposta do Asaas) — repassamos pro admin em vez de
+          // engolir em `.message`. Esse endpoint (:id/cancelar) só é
+          // acessível a admin autenticado (JwtAuthGuard+AdminGuard), então
+          // não há risco de vazar detalhe técnico pra um cliente final.
+          const respostaOriginal =
+            typeof estornoError?.getResponse === 'function'
+              ? estornoError.getResponse()
+              : null;
+          const asaasError =
+            respostaOriginal && typeof respostaOriginal === 'object'
+              ? (respostaOriginal as any).asaasError
+              : undefined;
+          const mensagemErro =
+            (respostaOriginal && typeof respostaOriginal === 'object'
+              ? (respostaOriginal as any).message
+              : null) || estornoError.message;
+
           this.logger.error(
-            `❌ Erro ao processar estorno para reserva ${reserva.codigo}: ${estornoError.message}`,
+            `❌ Erro ao processar estorno para reserva ${reserva.codigo}: ${mensagemErro}`,
           );
           // O pagamento já foi recebido — se o estorno falha, a reserva
           // NÃO pode ser cancelada (nem liberar as datas, nem nada mais
@@ -851,27 +870,36 @@ export class ReservasService {
           // E sem o dinheiro de volta. O admin precisa ver o erro e tentar
           // de novo, ou resolver manualmente no painel do Asaas antes de
           // cancelar.
-          throw new BadRequestException(
-            `Não foi possível cancelar: o estorno do pagamento falhou (${estornoError.message}). A reserva continua ativa até o estorno ser concluído com sucesso.`,
-          );
+          throw new BadRequestException({
+            message: `Não foi possível cancelar: o estorno do pagamento falhou (${mensagemErro}). A reserva continua ativa até o estorno ser concluído com sucesso.`,
+            asaasError,
+          });
         }
       }
 
-      // 3.5. Se a cobrança ainda está pendente (nada foi pago), tentar
-      // cancelar no Asaas em vez de deixar o link de pagamento ativo. Isso é
-      // best-effort: o cancelarCobranca() chama DELETE /v3/payments/{id},
-      // que não existe para uma Checkout Session ainda não paga (o objeto
-      // "payment" só passa a existir no Asaas depois que alguém paga), então
-      // hoje isso normalmente retorna 404 e é apenas logado — a rede de
-      // segurança real é (a) a sessão expirar sozinha em minutesToExpire
-      // minutos e (b) recuperarOuEstornarReservaCancelada() detectar e
-      // estornar automaticamente se o cliente pagar antes disso.
+      // 3.5. Se o pagamento ainda está pendente (nada foi pago, não existe
+      // "cobrança" no Asaas ainda), tentar cancelar a Checkout Session em
+      // vez de deixar o link de pagamento ativo. cancelarCheckoutPendente()
+      // chama POST /v3/checkouts/{id}/cancel. Mesmo assim é tratado como
+      // best-effort aqui: se falhar (ex.: checkout já expirou ou foi pago
+      // numa corrida com este cancelamento), a rede de segurança real é (a)
+      // a sessão expirar sozinha em minutesToExpire minutos e (b)
+      // recuperarOuEstornarReservaCancelada() detectar e estornar
+      // automaticamente se o cliente pagar antes disso.
+      let avisos: any[] = [];
       if (
         reserva.pagamento &&
         (reserva.pagamento as any).status === StatusPagamento.PENDENTE
       ) {
         try {
-          await this.pagamentosService.cancelarCobranca(reservaId);
+          const resultadoCancelamento =
+            await this.pagamentosService.cancelarCheckoutPendente(reservaId);
+          avisos = resultadoCancelamento.avisos;
+          if (avisos.length > 0) {
+            this.logger.warn(
+              `⚠️ Checkout pendente da reserva ${reserva.codigo} não pôde ser cancelado no Asaas: ${JSON.stringify(avisos)}`,
+            );
+          }
         } catch (cancelamentoError) {
           this.logger.error(
             `Erro ao cancelar cobrança pendente no Asaas para reserva ${reserva.codigo}: ${cancelamentoError.message}`,
@@ -936,6 +964,7 @@ export class ReservasService {
       return {
         reserva: reservaCancelada,
         estorno: estorno || null,
+        avisos: avisos.length > 0 ? avisos : undefined,
       };
     } catch (error) {
       this.logger.error(

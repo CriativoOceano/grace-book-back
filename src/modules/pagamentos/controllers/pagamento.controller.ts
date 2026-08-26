@@ -64,7 +64,12 @@ export class PagamentosController {
     @Request() req,
   ) {
     await this.verificarDono(reservaId, req);
-    const cancelado = await this.pagamentosService.cancelarCobranca(reservaId);
-    return { success: cancelado };
+    // Endpoint acessível ao próprio dono da reserva (JwtAuthGuard, sem
+    // AdminGuard) — por isso devolvemos só um booleano. O detalhe técnico
+    // do Asaas (endpoint, status, corpo da resposta) em `avisos` é
+    // diagnóstico pra admin, não pode vazar pro cliente final aqui.
+    const resultado =
+      await this.pagamentosService.cancelarCheckoutPendente(reservaId);
+    return { success: resultado.sucesso };
   }
 }

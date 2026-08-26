@@ -18,9 +18,6 @@ export class Pagamento {
   @Prop({ required: true, enum: ModoPagamento })
   modoPagamento: ModoPagamento;
 
-  @Prop({ type: String, required: true })
-  asaasPagamentoId: string;
-
   @Prop({ type: String })
   asaasCheckoutSessionId: string;
 

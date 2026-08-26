@@ -187,7 +187,7 @@ export function getReservaConfirmacaoTemplate(
           ${botaoPagar}
           ${renderButton({
             label: 'Consultar Reserva',
-            href: `${frontendUrl}/consultar-reserva`,
+            href: `${frontendUrl}/consultar-reserva?codigo=${encodeURIComponent(data.codigoReserva)}&email=${encodeURIComponent(data.dadosHospede?.email || '')}`,
             variant: 'secondary',
           })}
         </td>

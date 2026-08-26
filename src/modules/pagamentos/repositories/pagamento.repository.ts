@@ -116,17 +116,6 @@ export class PagamentoRepository implements IPagamentoRepository {
       return pagamento;
     }
 
-    // Se não encontrar, tenta pelo campo antigo (compatibilidade)
-    pagamento = await this.pagamentoModel
-      .findOne({ asaasPagamentoId: asaasId })
-      .exec();
-    if (pagamento) {
-      this.logger.log(
-        `✅ Pagamento encontrado pelo campo asaasPagamentoId: ${asaasId}`,
-      );
-      return pagamento;
-    }
-
     // Por último, tenta pelo campo detalhes.id (método antigo)
     pagamento = await this.findByExternalId(asaasId);
     if (pagamento) {
@@ -164,14 +153,6 @@ export class PagamentoRepository implements IPagamentoRepository {
 
     for (const pagamento of pagamentosParaMigrar) {
       const updateData: any = {};
-
-      // Se tem asaasPagamentoId mas não tem asaasCheckoutSessionId, copiar
-      if (pagamento.asaasPagamentoId && !pagamento.asaasCheckoutSessionId) {
-        updateData.asaasCheckoutSessionId = pagamento.asaasPagamentoId;
-        this.logger.log(
-          `📝 Migrando checkoutSessionId para pagamento ${pagamento._id}: ${pagamento.asaasPagamentoId}`,
-        );
-      }
 
       // Se tem detalhes.id mas não tem asaasCheckoutSessionId, usar detalhes.id
       if (pagamento.detalhes?.id && !pagamento.asaasCheckoutSessionId) {

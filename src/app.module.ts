@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { SharedModule } from './modules/modules';
 import { AuthModule } from './modules/auth/auth.module';
 import { ReservasModule } from './modules/reservas/reservas.module';
@@ -25,6 +26,7 @@ import { PrecosSazonaisModule } from './modules/precos-sazonais/precos-sazonais.
     ClientesModule,
     PrecosSazonaisModule,
     ConfigModule.forRoot(),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 60 segundos

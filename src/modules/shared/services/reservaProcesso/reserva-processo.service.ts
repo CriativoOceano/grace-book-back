@@ -178,7 +178,7 @@ export class ReservaProcessoService {
       await this.pagamentoRepository.findByReservaId(reservaId);
 
     for (const pagamento of pagamentos) {
-      await this.pagamentoService.cancelarCobranca(reservaId);
+      await this.pagamentoService.cancelarCheckoutPendente(reservaId);
       await this.pagamentoRepository.updatePagamento(
         pagamento['_id'].toString(),
         {

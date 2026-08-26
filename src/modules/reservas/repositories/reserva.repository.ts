@@ -229,11 +229,20 @@ export class ReservaRepository implements IReservaRepository {
   }
 
   /**
-   * Busca reservas confirmadas para bloquear datas no calendário
+   * Busca reservas que ocupam datas no calendário público — não só as já
+   * CONFIRMADAs, mas também as PENDENTE_PAGAMENTO. A verificação real de
+   * disponibilidade no backend (verificarDisponibilidade) já trata
+   * qualquer reserva não cancelada como ocupando a data, pra impedir duas
+   * pessoas de reservarem o mesmo período enquanto uma ainda está no meio
+   * do checkout — o calendário público precisa refletir essa mesma regra,
+   * senão o cliente preenche tudo e só descobre que a data já estava
+   * reservada (por outra pessoa, ainda pagando) na hora de finalizar.
    */
   async findReservasConfirmadas(): Promise<any[]> {
     const reservas = await this.reservaModel
-      .find({ statusReserva: 'CONFIRMADA' })
+      .find({
+        statusReserva: { $in: ['CONFIRMADA', 'PENDENTE_PAGAMENTO'] },
+      })
       .select('dataInicio dataFim tipo')
       .exec();
 
