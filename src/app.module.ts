@@ -12,6 +12,7 @@ import { ReservaProcessoModule } from './modules/shared/services/reservaProcesso
 import { ConfiguracoesModule } from './modules/configuracoes/configuracoes.module';
 import { DisponibilidadeModule } from './modules/disponibilidade/disponibilidade.module';
 import { ClientesModule } from './modules/clientes/clientes.module';
+import { PrecosSazonaisModule } from './modules/precos-sazonais/precos-sazonais.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ClientesModule } from './modules/clientes/clientes.module';
     ConfiguracoesModule,
     DisponibilidadeModule,
     ClientesModule,
+    PrecosSazonaisModule,
     ConfigModule.forRoot(),
     ThrottlerModule.forRoot([
       {

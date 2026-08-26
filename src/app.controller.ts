@@ -15,7 +15,7 @@ export class AppController {
     return {
       status: 'OK',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime()
+      uptime: process.uptime(),
     };
   }
 }

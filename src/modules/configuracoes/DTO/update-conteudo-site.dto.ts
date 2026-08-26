@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsUrl } from '@nestjs/class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  ValidateNested,
+  IsOptional,
+  IsUrl,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class HeroSlideDto {

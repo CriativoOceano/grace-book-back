@@ -6,13 +6,10 @@ import { reservaRepositoryProvider } from './repositories/reserva-repository.pro
 import { ConfiguracoesModule } from '../configuracoes/configuracoes.module';
 
 @Module({
-  imports: [
-    SharedModule,
-    ConfiguracoesModule
-  ],
+  imports: [SharedModule, ConfiguracoesModule],
   controllers: [ReservasController],
   providers: [ReservasService],
-  exports: []
+  exports: [],
 })
 export class ReservasModule {
   static forFeature() {
@@ -20,7 +17,7 @@ export class ReservasModule {
       module: ReservasModule,
       imports: [],
       providers: [reservaRepositoryProvider],
-      exports: [reservaRepositoryProvider]
+      exports: [reservaRepositoryProvider],
     };
   }
 }

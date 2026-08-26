@@ -1,7 +1,19 @@
-import { Controller, Get, Post, Body, Param, Put, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
 import { UsuariosService } from '../usuarios/usuarios.service';
 import { CreateUsuarioDto } from '../usuarios/dto/create-usuario.dto';
 import { UpdateUsuarioDto } from '../usuarios/dto/update-usuario.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 export interface ClienteResponse {
   success: boolean;
@@ -10,25 +22,32 @@ export interface ClienteResponse {
   error?: string;
 }
 
+// Toda esta rota expõe dados pessoais (incluindo, historicamente, hash de
+// senha) de todos os usuários — não é usada por nenhum fluxo público do
+// front-end hoje (o ClienteService do Angular está órfão), então fica
+// inteira atrás de admin em vez de ficar aberta "só por enquanto".
+@UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('api/clientes')
 export class ClientesController {
   constructor(private readonly usuariosService: UsuariosService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createClienteDto: CreateUsuarioDto): Promise<ClienteResponse> {
+  async create(
+    @Body() createClienteDto: CreateUsuarioDto,
+  ): Promise<ClienteResponse> {
     try {
       const usuario = await this.usuariosService.create(createClienteDto);
       return {
         success: true,
         data: usuario,
-        message: 'Cliente criado com sucesso'
+        message: 'Cliente criado com sucesso',
       };
     } catch (error) {
       return {
         success: false,
         data: null,
-        error: error.message || 'Erro ao criar cliente'
+        error: error.message || 'Erro ao criar cliente',
       };
     }
   }
@@ -41,20 +60,20 @@ export class ClientesController {
         return {
           success: true,
           data: usuario,
-          message: 'Cliente encontrado'
+          message: 'Cliente encontrado',
         };
       } else {
         return {
           success: false,
           data: null,
-          message: 'Cliente não encontrado'
+          message: 'Cliente não encontrado',
         };
       }
     } catch (error) {
       return {
         success: false,
         data: null,
-        error: error.message || 'Erro ao buscar cliente'
+        error: error.message || 'Erro ao buscar cliente',
       };
     }
   }
@@ -67,38 +86,41 @@ export class ClientesController {
         return {
           success: true,
           data: usuario,
-          message: 'Cliente encontrado'
+          message: 'Cliente encontrado',
         };
       } else {
         return {
           success: false,
           data: null,
-          message: 'Cliente não encontrado'
+          message: 'Cliente não encontrado',
         };
       }
     } catch (error) {
       return {
         success: false,
         data: null,
-        error: error.message || 'Erro ao buscar cliente'
+        error: error.message || 'Erro ao buscar cliente',
       };
     }
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateClienteDto: UpdateUsuarioDto): Promise<ClienteResponse> {
+  async update(
+    @Param('id') id: string,
+    @Body() updateClienteDto: UpdateUsuarioDto,
+  ): Promise<ClienteResponse> {
     try {
       const usuario = await this.usuariosService.update(id, updateClienteDto);
       return {
         success: true,
         data: usuario,
-        message: 'Cliente atualizado com sucesso'
+        message: 'Cliente atualizado com sucesso',
       };
     } catch (error) {
       return {
         success: false,
         data: null,
-        error: error.message || 'Erro ao atualizar cliente'
+        error: error.message || 'Erro ao atualizar cliente',
       };
     }
   }
@@ -110,13 +132,13 @@ export class ClientesController {
       return {
         success: true,
         data: usuarios,
-        message: 'Clientes listados com sucesso'
+        message: 'Clientes listados com sucesso',
       };
     } catch (error) {
       return {
         success: false,
         data: null,
-        error: error.message || 'Erro ao listar clientes'
+        error: error.message || 'Erro ao listar clientes',
       };
     }
   }

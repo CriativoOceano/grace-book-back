@@ -12,7 +12,7 @@ services:
       - key: PORT
         value: 10000
       - key: FRONTEND_URL
-        value: https://sedecampestre.netlify.app
+        value: https://sedecampestre.oceanodagraca.com
       # Database - Configure no dashboard do Render
       - key: MONGODB_URI
         sync: false
@@ -22,22 +22,19 @@ services:
       - key: JWT_EXPIRES_IN
         value: 24h
       # ASAAS Payment Gateway - Configure no dashboard do Render
+      # (o código lê ASAAS_API_URL, não ASAAS_BASE_URL — o nome antigo aqui
+      # nunca era lido pelo app, então a URL da API ficava undefined)
       - key: ASAAS_API_KEY
         sync: false
-      - key: ASAAS_ENVIRONMENT
-        value: production
-      - key: ASAAS_BASE_URL
-        value: https://api.asaas.com/
+      - key: ASAAS_API_URL
+        value: https://api.asaas.com/v3
       - key: ASAAS_WEBHOOK_SECRET
         sync: false
       # Email Configuration - Configure no dashboard do Render
-      - key: EMAIL_HOST
-        value: smtp-relay.brevo.com
-      - key: EMAIL_PORT
-        value: 587
-      - key: EMAIL_USER
-        sync: false
-      - key: EMAIL_PASS
+      # (o serviço de email usa a API do Resend — crie a chave em
+      # https://resend.com/api-keys. EMAIL_FROM precisa ser um endereço do
+      # domínio verificado no Resend, senão o envio é rejeitado)
+      - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
-        value: no-reply@sedecampestre.oceanodagraca.com
+        value: no-reply@notifications.oceanodagraca.com

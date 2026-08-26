@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, IsEnum, IsNumber, IsOptional } from '@nestjs/class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+} from 'class-validator';
 import { StatusPagamento } from '../pagamento.enums';
 
 export class PagamentoWebhookDto {

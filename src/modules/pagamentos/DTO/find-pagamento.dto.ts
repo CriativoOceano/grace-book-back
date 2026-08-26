@@ -1,4 +1,9 @@
-import { IsOptional, IsString, IsEnum, IsDateString } from '@nestjs/class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsDateString,
+} from 'class-validator';
 import { StatusPagamento } from '../pagamento.enums';
 
 export class FindPagamentoDto {

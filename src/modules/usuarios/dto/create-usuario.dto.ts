@@ -1,4 +1,10 @@
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from "@nestjs/class-validator";
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 export class CreateUsuarioDto {
   @IsNotEmpty()
@@ -26,7 +32,7 @@ export class CreateUsuarioDto {
   @IsOptional()
   senha?: string;
 
-  @IsBoolean()
-  @IsOptional()
-  isAdmin?: boolean;
+  // isAdmin propositalmente NÃO existe aqui: este DTO alimenta um endpoint
+  // público de autocadastro (POST /usuarios) e nunca deve poder conceder
+  // privilégio de admin a partir de dados enviados pelo cliente.
 }

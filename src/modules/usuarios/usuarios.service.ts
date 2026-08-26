@@ -1,5 +1,10 @@
 // src/modules/usuarios/usuarios.service.ts
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
@@ -7,17 +12,12 @@ import { Usuario, UsuarioModel } from 'src/schemas/usuario.schema';
 
 @Injectable()
 export class UsuariosService {
-  constructor(
-    @InjectModel(Usuario.name) private usuarioModel: UsuarioModel,
-  ) {}
+  constructor(@InjectModel(Usuario.name) private usuarioModel: UsuarioModel) {}
 
   async create(createUsuarioDto: CreateUsuarioDto): Promise<Usuario> {
     // Verificar se já existe usuário com o mesmo CPF ou email
     const usuarioExistente = await this.usuarioModel.findOne({
-      $or: [
-        { email: createUsuarioDto.email },
-        { cpf: createUsuarioDto.cpf },
-      ],
+      $or: [{ email: createUsuarioDto.email }, { cpf: createUsuarioDto.cpf }],
     });
 
     if (usuarioExistente) {
@@ -40,7 +40,7 @@ export class UsuariosService {
     // Validar dados obrigatórios
     if (!bookingData.email || !bookingData.cpf) {
       throw new BadRequestException(
-        'Email e CPF são obrigatórios para criar um usuário'
+        'Email e CPF são obrigatórios para criar um usuário',
       );
     }
 
@@ -50,16 +50,13 @@ export class UsuariosService {
 
     if (!emailLimpo || !cpfLimpo) {
       throw new BadRequestException(
-        'Email e CPF não podem estar vazios após limpeza'
+        'Email e CPF não podem estar vazios após limpeza',
       );
     }
 
     // Verificar se já existe usuário com o mesmo email ou CPF
     const usuarioExistente = await this.usuarioModel.findOne({
-      $or: [
-        { email: emailLimpo },
-        { cpf: cpfLimpo }
-      ],
+      $or: [{ email: emailLimpo }, { cpf: cpfLimpo }],
     });
 
     if (usuarioExistente) {
@@ -86,7 +83,10 @@ export class UsuariosService {
   }
 
   async findById(id: string): Promise<Usuario> {
-    const usuario = await this.usuarioModel.findById(id).select('-senha').exec();
+    const usuario = await this.usuarioModel
+      .findById(id)
+      .select('-senha')
+      .exec();
     if (!usuario) {
       throw new NotFoundException(`Usuário com ID "${id}" não encontrado`);
     }
@@ -96,7 +96,9 @@ export class UsuariosService {
   async findByEmail(email: string): Promise<Usuario> {
     const usuario = await this.usuarioModel.findOne({ email }).exec();
     if (!usuario) {
-      throw new NotFoundException(`Usuário com email "${email}" não encontrado`);
+      throw new NotFoundException(
+        `Usuário com email "${email}" não encontrado`,
+      );
     }
     return usuario;
   }
@@ -109,25 +111,62 @@ export class UsuariosService {
     return usuario;
   }
 
-  async update(id: string, updateUsuarioDto: UpdateUsuarioDto): Promise<Usuario> {
-    const updatedUsuario = await this.usuarioModel
-      .findByIdAndUpdate(id, updateUsuarioDto, { new: true }).select('-senha')
+  /**
+   * Variante de findByEmail/findByCpf que inclui o hash da senha
+   * (select: false por padrão no schema). Usar apenas no caminho de
+   * autenticação (comparação de senha) — nunca devolver o resultado
+   * direto em uma resposta HTTP.
+   */
+  async findByEmailComSenha(email: string): Promise<Usuario> {
+    const usuario = await this.usuarioModel
+      .findOne({ email })
+      .select('+senha')
       .exec();
-    
+    if (!usuario) {
+      throw new NotFoundException(
+        `Usuário com email "${email}" não encontrado`,
+      );
+    }
+    return usuario;
+  }
+
+  async findByCpfComSenha(cpf: string): Promise<Usuario> {
+    const usuario = await this.usuarioModel
+      .findOne({ cpf })
+      .select('+senha')
+      .exec();
+    if (!usuario) {
+      throw new NotFoundException(`Usuário com CPF "${cpf}" não encontrado`);
+    }
+    return usuario;
+  }
+
+  async update(
+    id: string,
+    updateUsuarioDto: UpdateUsuarioDto,
+  ): Promise<Usuario> {
+    const updatedUsuario = await this.usuarioModel
+      .findByIdAndUpdate(id, updateUsuarioDto, { new: true })
+      .select('-senha')
+      .exec();
+
     if (!updatedUsuario) {
       throw new NotFoundException(`Usuário com ID "${id}" não encontrado`);
     }
-    
+
     return updatedUsuario;
   }
 
   async remove(id: string): Promise<Usuario> {
-    const deletedUsuario = await this.usuarioModel.findByIdAndDelete(id).select('-senha').exec();
-    
+    const deletedUsuario = await this.usuarioModel
+      .findByIdAndDelete(id)
+      .select('-senha')
+      .exec();
+
     if (!deletedUsuario) {
       throw new NotFoundException(`Usuário com ID "${id}" não encontrado`);
     }
-    
+
     return deletedUsuario;
   }
 
@@ -144,7 +183,10 @@ export class UsuariosService {
     return this.usuarioModel.gerarCodigoAcesso(usuario.email);
   }
 
-  async verificarCodigoAcesso(emailOuCpf: string, codigo: string): Promise<boolean> {
+  async verificarCodigoAcesso(
+    emailOuCpf: string,
+    codigo: string,
+  ): Promise<boolean> {
     const usuario = await this.usuarioModel.findOne({
       $or: [{ email: emailOuCpf }, { cpf: emailOuCpf }],
       codigoAcesso: codigo,

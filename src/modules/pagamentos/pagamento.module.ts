@@ -6,12 +6,10 @@ import { SharedModule } from '../modules';
 import { pagamentoRepositoryProvider } from './repositories/pagamento-repository.provider';
 
 @Module({
-  imports: [
-    SharedModule,
-  ],
+  imports: [SharedModule],
   controllers: [PagamentosController, WebhookController],
   providers: [PagamentosService],
-  exports: []
+  exports: [],
 })
 export class PagamentosModule {
   static forFeature() {
@@ -19,7 +17,7 @@ export class PagamentosModule {
       module: PagamentosModule,
       imports: [], // Imports mínimos necessários
       providers: [PagamentosService, pagamentoRepositoryProvider],
-      exports: [PagamentosService, pagamentoRepositoryProvider]
+      exports: [PagamentosService, pagamentoRepositoryProvider],
     };
   }
 }

@@ -1,22 +1,24 @@
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types, Schema as MongooseSchema } from 'mongoose';
 import { Reserva } from './reserva.schema';
-import { ModoPagamento, StatusPagamento } from 'src/modules/pagamentos/pagamento.enums';
+import {
+  ModoPagamento,
+  StatusPagamento,
+} from 'src/modules/pagamentos/pagamento.enums';
 
 export type PagamentoDocument = Pagamento & Document;
 @Schema({ timestamps: true })
 export class Pagamento {
-  
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Reserva', required: true })
   reservaId: Reserva;
 
-  @Prop({ required: true, enum: StatusPagamento})
+  @Prop({ required: true, enum: StatusPagamento })
   status: StatusPagamento;
 
-  @Prop({ required: true, enum: ModoPagamento})
+  @Prop({ required: true, enum: ModoPagamento })
   modoPagamento: ModoPagamento;
 
-  @Prop({ type: String, required: true})
+  @Prop({ type: String, required: true })
   asaasPagamentoId: string;
 
   @Prop({ type: String })
@@ -25,22 +27,22 @@ export class Pagamento {
   @Prop({ type: String })
   asaasPaymentId: string;
 
-  @Prop({type: Number, min: 1 })
+  @Prop({ type: Number, min: 1 })
   valorTotal: number;
 
-  @Prop({type: Number})
+  @Prop({ type: Number })
   valor: number;
 
-  @Prop({type: Number})
+  @Prop({ type: Number })
   qtdParcelas: number;
 
-  @Prop({type: Number})
+  @Prop({ type: Number })
   parcelas: number;
 
   @Prop({ type: String })
   asaasInstallmentId: string;
 
-  @Prop({ type: Date})
+  @Prop({ type: Date })
   dataPagamento: Date;
 
   @Prop()
@@ -52,7 +54,7 @@ export class Pagamento {
   @Prop({ type: Object })
   estorno: any;
 
-  @Prop({required: true})
+  @Prop({ required: true })
   linkPagamento: string;
 }
 

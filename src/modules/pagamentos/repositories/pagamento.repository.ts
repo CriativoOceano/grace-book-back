@@ -41,14 +41,12 @@ export class PagamentoRepository implements IPagamentoRepository {
   }
 
   async updatePagamento(
-    pagamentoId: string, 
-    dadosAtualizacao: Partial<Pagamento>
+    pagamentoId: string,
+    dadosAtualizacao: Partial<Pagamento>,
   ): Promise<PagamentoDocument> {
-    return this.pagamentoModel.findByIdAndUpdate(
-      pagamentoId,
-      { $set: dadosAtualizacao },
-      { new: true }
-    ).exec();
+    return this.pagamentoModel
+      .findByIdAndUpdate(pagamentoId, { $set: dadosAtualizacao }, { new: true })
+      .exec();
   }
 
   async cancelPagamento(id: string): Promise<boolean> {
@@ -72,19 +70,25 @@ export class PagamentoRepository implements IPagamentoRepository {
 
     return resultado.modifiedCount;
   }
-  
+
   private isValidObjectId(id: string): boolean {
     return Types.ObjectId.isValid(id);
   }
 
   // Método para encontrar pagamento pelo ID externo (checkoutId do Asaas)
-  async findByExternalId(externalId: string): Promise<PagamentoDocument | null> {
+  async findByExternalId(
+    externalId: string,
+  ): Promise<PagamentoDocument | null> {
     return this.pagamentoModel.findOne({ 'detalhes.id': externalId }).exec();
   }
 
   // Método para encontrar pagamento pelo Checkout Session ID
-  async findByCheckoutSessionId(checkoutSessionId: string): Promise<PagamentoDocument | null> {
-    return this.pagamentoModel.findOne({ asaasCheckoutSessionId: checkoutSessionId }).exec();
+  async findByCheckoutSessionId(
+    checkoutSessionId: string,
+  ): Promise<PagamentoDocument | null> {
+    return this.pagamentoModel
+      .findOne({ asaasCheckoutSessionId: checkoutSessionId })
+      .exec();
   }
 
   // Método para encontrar pagamento pelo Payment ID
@@ -95,7 +99,7 @@ export class PagamentoRepository implements IPagamentoRepository {
   // Método para encontrar pagamento por qualquer ID do ASAAS
   async findByAsaasId(asaasId: string): Promise<PagamentoDocument | null> {
     this.logger.log(`🔍 Buscando pagamento pelo ID: ${asaasId}`);
-    
+
     // Primeiro tenta buscar pelo Payment ID
     let pagamento = await this.findByPaymentId(asaasId);
     if (pagamento) {
@@ -106,43 +110,57 @@ export class PagamentoRepository implements IPagamentoRepository {
     // Se não encontrar, tenta pelo Checkout Session ID
     pagamento = await this.findByCheckoutSessionId(asaasId);
     if (pagamento) {
-      this.logger.log(`✅ Pagamento encontrado pelo Checkout Session ID: ${asaasId}`);
+      this.logger.log(
+        `✅ Pagamento encontrado pelo Checkout Session ID: ${asaasId}`,
+      );
       return pagamento;
     }
 
     // Se não encontrar, tenta pelo campo antigo (compatibilidade)
-    pagamento = await this.pagamentoModel.findOne({ asaasPagamentoId: asaasId }).exec();
+    pagamento = await this.pagamentoModel
+      .findOne({ asaasPagamentoId: asaasId })
+      .exec();
     if (pagamento) {
-      this.logger.log(`✅ Pagamento encontrado pelo campo asaasPagamentoId: ${asaasId}`);
+      this.logger.log(
+        `✅ Pagamento encontrado pelo campo asaasPagamentoId: ${asaasId}`,
+      );
       return pagamento;
     }
 
     // Por último, tenta pelo campo detalhes.id (método antigo)
     pagamento = await this.findByExternalId(asaasId);
     if (pagamento) {
-      this.logger.log(`✅ Pagamento encontrado pelo campo detalhes.id: ${asaasId}`);
+      this.logger.log(
+        `✅ Pagamento encontrado pelo campo detalhes.id: ${asaasId}`,
+      );
       return pagamento;
     }
 
-    this.logger.log(`❌ Pagamento não encontrado por nenhum método para ID: ${asaasId}`);
+    this.logger.log(
+      `❌ Pagamento não encontrado por nenhum método para ID: ${asaasId}`,
+    );
     return null;
   }
 
   // Método para migrar dados existentes e atualizar campos
   async migrarDadosExistentes(): Promise<void> {
     this.logger.log(`🔄 Iniciando migração de dados existentes...`);
-    
-    // Buscar pagamentos que não têm os novos campos preenchidos
-    const pagamentosParaMigrar = await this.pagamentoModel.find({
-      $or: [
-        { asaasCheckoutSessionId: { $exists: false } },
-        { asaasCheckoutSessionId: null },
-        { asaasPaymentId: { $exists: false } },
-        { asaasPaymentId: null }
-      ]
-    }).exec();
 
-    this.logger.log(`📊 Encontrados ${pagamentosParaMigrar.length} pagamentos para migrar`);
+    // Buscar pagamentos que não têm os novos campos preenchidos
+    const pagamentosParaMigrar = await this.pagamentoModel
+      .find({
+        $or: [
+          { asaasCheckoutSessionId: { $exists: false } },
+          { asaasCheckoutSessionId: null },
+          { asaasPaymentId: { $exists: false } },
+          { asaasPaymentId: null },
+        ],
+      })
+      .exec();
+
+    this.logger.log(
+      `📊 Encontrados ${pagamentosParaMigrar.length} pagamentos para migrar`,
+    );
 
     for (const pagamento of pagamentosParaMigrar) {
       const updateData: any = {};
@@ -150,36 +168,48 @@ export class PagamentoRepository implements IPagamentoRepository {
       // Se tem asaasPagamentoId mas não tem asaasCheckoutSessionId, copiar
       if (pagamento.asaasPagamentoId && !pagamento.asaasCheckoutSessionId) {
         updateData.asaasCheckoutSessionId = pagamento.asaasPagamentoId;
-        this.logger.log(`📝 Migrando checkoutSessionId para pagamento ${pagamento._id}: ${pagamento.asaasPagamentoId}`);
+        this.logger.log(
+          `📝 Migrando checkoutSessionId para pagamento ${pagamento._id}: ${pagamento.asaasPagamentoId}`,
+        );
       }
 
       // Se tem detalhes.id mas não tem asaasCheckoutSessionId, usar detalhes.id
       if (pagamento.detalhes?.id && !pagamento.asaasCheckoutSessionId) {
         updateData.asaasCheckoutSessionId = pagamento.detalhes.id;
-        this.logger.log(`📝 Migrando checkoutSessionId do detalhes.id para pagamento ${pagamento._id}: ${pagamento.detalhes.id}`);
+        this.logger.log(
+          `📝 Migrando checkoutSessionId do detalhes.id para pagamento ${pagamento._id}: ${pagamento.detalhes.id}`,
+        );
       }
 
       if (Object.keys(updateData).length > 0) {
         await this.pagamentoModel.updateOne(
           { _id: pagamento._id },
-          { $set: updateData }
+          { $set: updateData },
         );
         this.logger.log(`✅ Pagamento ${pagamento._id} migrado com sucesso`);
       }
     }
 
-    this.logger.log(`✅ Migração concluída! ${pagamentosParaMigrar.length} pagamentos processados`);
+    this.logger.log(
+      `✅ Migração concluída! ${pagamentosParaMigrar.length} pagamentos processados`,
+    );
   }
 
   /**
    * Busca pagamentos expirados (pendentes há mais tempo que o limite especificado)
    */
-  async findPagamentosExpirados(dataLimite: Date): Promise<PagamentoDocument[]> {
-    this.logger.log(`🔍 Buscando pagamentos expirados antes de ${dataLimite.toISOString()}`);
-    
-    return this.pagamentoModel.find({
-      status: StatusPagamento.PENDENTE,
-      createdAt: { $lt: dataLimite }
-    }).exec();
+  async findPagamentosExpirados(
+    dataLimite: Date,
+  ): Promise<PagamentoDocument[]> {
+    this.logger.log(
+      `🔍 Buscando pagamentos expirados antes de ${dataLimite.toISOString()}`,
+    );
+
+    return this.pagamentoModel
+      .find({
+        status: StatusPagamento.PENDENTE,
+        createdAt: { $lt: dataLimite },
+      })
+      .exec();
   }
 }

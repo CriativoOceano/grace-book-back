@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString, IsDate, IsBoolean, IsNumber, Min } from '@nestjs/class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsDate,
+  IsBoolean,
+  IsNumber,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class BloquearDataDto {

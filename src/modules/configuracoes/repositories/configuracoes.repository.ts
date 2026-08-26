@@ -3,7 +3,10 @@ import { UpdateConfiguracaoDto } from '../DTO/update-configuracoes.dto';
 import { ConteudoSiteDto } from '../DTO/update-conteudo-site.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { IConfiguracoesRepository } from './interfaces/reserva-repository.interface';
-import { Configuracao, ConfiguracaoModel } from '../../../schemas/config.schema';
+import {
+  Configuracao,
+  ConfiguracaoModel,
+} from '../../../schemas/config.schema';
 
 export const CONFIGURACOES_REPOSITORY = 'IConfiguracoesRepository';
 
@@ -12,7 +15,8 @@ export class ConfiguracoesRepository implements IConfiguracoesRepository {
   private readonly logger = new Logger(ConfiguracoesRepository.name);
 
   constructor(
-    @InjectModel(Configuracao.name) private configuracaoModel: ConfiguracaoModel,
+    @InjectModel(Configuracao.name)
+    private configuracaoModel: ConfiguracaoModel,
   ) {
     // Inicializar as configurações padrão se não existirem
     this.inicializarConfiguracoes();
@@ -23,7 +27,7 @@ export class ConfiguracoesRepository implements IConfiguracoesRepository {
 
     if (count === 0) {
       this.logger.log('Inicializando configurações padrão do sistema');
-      
+
       // Usar o método estático do schema para criar configuração padrão
       await this.configuracaoModel.getConfig();
       this.logger.log('Configurações padrão criadas com sucesso');
@@ -40,7 +44,10 @@ export class ConfiguracoesRepository implements IConfiguracoesRepository {
     return configuracoes.conteudoSite || {};
   }
 
-  async updateConfiguracoes(updateConfiguracaoDto: UpdateConfiguracaoDto): Promise<Configuracao> {
+  async updateConfiguracoes(
+    updateConfiguracaoDto: UpdateConfiguracaoDto,
+    alteradoPorNome?: string,
+  ): Promise<Configuracao> {
     const configuracoes = await this.configuracaoModel.findOne().exec();
 
     if (!configuracoes) {
@@ -50,28 +57,39 @@ export class ConfiguracoesRepository implements IConfiguracoesRepository {
     // Atualizar apenas os campos fornecidos
     Object.assign(configuracoes, updateConfiguracaoDto);
     configuracoes.dataAtualizacao = new Date();
+    if (alteradoPorNome) configuracoes.ultimaAlteracaoPor = alteradoPorNome;
 
     await configuracoes.save();
-    this.logger.log('Configurações atualizadas com sucesso');
+    this.logger.log(
+      `Configurações atualizadas com sucesso${alteradoPorNome ? ` por ${alteradoPorNome}` : ''}`,
+    );
 
     return configuracoes;
   }
 
-  async updateConteudoSite(conteudoSite: ConteudoSiteDto): Promise<ConteudoSiteDto> {
+  async updateConteudoSite(
+    conteudoSite: ConteudoSiteDto,
+    alteradoPorNome?: string,
+  ): Promise<ConteudoSiteDto> {
     const configuracoes = await this.configuracaoModel.getConfig();
-    
+
     if (!configuracoes) {
       throw new NotFoundException('Configurações não encontradas');
     }
 
     // Atualizar o conteúdo do site
-    configuracoes.conteudoSite = { ...configuracoes.conteudoSite, ...conteudoSite };
+    configuracoes.conteudoSite = {
+      ...configuracoes.conteudoSite,
+      ...conteudoSite,
+    };
     configuracoes.dataAtualizacao = new Date();
+    if (alteradoPorNome) configuracoes.ultimaAlteracaoPor = alteradoPorNome;
 
     await configuracoes.save();
-    this.logger.log('Conteúdo do site atualizado com sucesso');
+    this.logger.log(
+      `Conteúdo do site atualizado com sucesso${alteradoPorNome ? ` por ${alteradoPorNome}` : ''}`,
+    );
 
     return configuracoes.conteudoSite;
   }
 }
-

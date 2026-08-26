@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsEnum, IsOptional, IsNumber, IsDate, Min, Max } from '@nestjs/class-validator';
+import {
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsNumber,
+  IsDate,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoReserva } from '../reserva.enums';
 

@@ -4,7 +4,6 @@ import * as bcrypt from 'bcrypt';
 
 export type UsuarioDocument = Usuario & Document;
 
-
 // Interface para definir métodos estáticos
 export interface UsuarioModel extends Model<UsuarioDocument> {
   gerarCodigoAcesso(email: string): Promise<string>;
@@ -12,7 +11,6 @@ export interface UsuarioModel extends Model<UsuarioDocument> {
 
 @Schema({ timestamps: true })
 export class Usuario {
-  
   @Prop({ required: true })
   nome: string;
 
@@ -28,7 +26,7 @@ export class Usuario {
   @Prop()
   telefone: string;
 
-  @Prop({ select: true }) /* @TODO Não retorna senha nas consultas por padrão */
+  @Prop({ select: false })
   senha: string;
 
   @Prop({ default: Date.now })
@@ -72,29 +70,41 @@ UsuarioSchema.pre('save', async function (next) {
 });
 
 // Método estático para gerar código de acesso
-UsuarioSchema.statics.gerarCodigoAcesso = async function(email: string): Promise<string> {
+UsuarioSchema.statics.gerarCodigoAcesso = async function (
+  email: string,
+): Promise<string> {
   // Gerar código aleatório
   const codigo = Math.random().toString(36).substring(2, 8).toUpperCase();
-  
-  // Definir validade do código (24 horas)
+
+  // Validade do código: precisa bater com o texto do e-mail em
+  // email.service.ts ("Válido por 2 minutos") — ver EmailsService.
   const expiracao = new Date();
-  expiracao.setMinutes(expiracao.getMinutes() + 1);
-  
+  expiracao.setMinutes(expiracao.getMinutes() + 2);
+
   // Atualizar usuário com o novo código
   await this.findOneAndUpdate(
     { email },
-    { 
+    {
       codigoAcesso: codigo,
-      expiracaoCodigo: expiracao
-    }
+      expiracaoCodigo: expiracao,
+    },
   );
-  
+
   return codigo;
 };
 
-UsuarioSchema.methods.compararSenha = async function(senha: string): Promise<boolean> {
+UsuarioSchema.methods.compararSenha = async function (
+  senha: string,
+): Promise<boolean> {
+  if (!this.senha) {
+    // Documento carregado sem o campo `senha` selecionado (select: false
+    // por padrão) — quem chama precisa buscar o usuário com
+    // `.select('+senha')` antes de comparar.
+    return false;
+  }
   try {
     return await bcrypt.compare(senha, this.senha);
   } catch (error) {
+    return false;
   }
 };

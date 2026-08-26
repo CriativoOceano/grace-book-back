@@ -1,5 +1,8 @@
 import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
-import { ConfiguracoesRepository, CONFIGURACOES_REPOSITORY } from './repositories/configuracoes.repository';
+import {
+  ConfiguracoesRepository,
+  CONFIGURACOES_REPOSITORY,
+} from './repositories/configuracoes.repository';
 
 @Injectable()
 export class ConfiguracoesService {
@@ -7,7 +10,7 @@ export class ConfiguracoesService {
 
   constructor(
     @Inject(CONFIGURACOES_REPOSITORY)
-    private readonly configuracoesRepository: ConfiguracoesRepository
+    private readonly configuracoesRepository: ConfiguracoesRepository,
   ) {}
 
   async findAll() {

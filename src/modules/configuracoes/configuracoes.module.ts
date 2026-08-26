@@ -10,20 +10,24 @@ import { ConfiguracoesRepository } from './repositories/configuracoes.repository
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: Configuracao.name, schema: ConfiguracaoSchema }
-    ])
+      { name: Configuracao.name, schema: ConfiguracaoSchema },
+    ]),
   ],
   controllers: [ConfiguracoesController],
-  providers: [ConfiguracoesService, configuracoesRepositoryProvider, ConfiguracoesRepository],
-  exports: [ConfiguracoesService]
+  providers: [
+    ConfiguracoesService,
+    configuracoesRepositoryProvider,
+    ConfiguracoesRepository,
+  ],
+  exports: [ConfiguracoesService],
 })
 export class ConfiguracoesModule {
   static forFeature() {
-      return {
-        module: ConfiguracoesModule,
-        imports: [], // Imports mínimos necessários
-        providers: [ConfiguracoesService, configuracoesRepositoryProvider],
-        exports: [ConfiguracoesService, configuracoesRepositoryProvider],
-      };
-    }
+    return {
+      module: ConfiguracoesModule,
+      imports: [], // Imports mínimos necessários
+      providers: [ConfiguracoesService, configuracoesRepositoryProvider],
+      exports: [ConfiguracoesService, configuracoesRepositoryProvider],
+    };
+  }
 }

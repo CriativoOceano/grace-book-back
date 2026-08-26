@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from '@nestjs/class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CancelarReservaDto {
   @IsOptional()

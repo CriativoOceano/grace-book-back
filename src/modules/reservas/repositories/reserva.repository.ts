@@ -21,11 +21,11 @@ export class ReservaRepository implements IReservaRepository {
       .populate('usuario')
       .sort({ createdAt: -1 })
       .exec();
-    
+
     // Converter _id para id para compatibilidade com frontend
-    return reservas.map(reserva => ({
+    return reservas.map((reserva) => ({
       ...reserva.toObject(),
-      id: reserva._id.toString()
+      id: reserva._id.toString(),
     }));
   }
 
@@ -34,19 +34,23 @@ export class ReservaRepository implements IReservaRepository {
       .find({ usuario: userId })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     // Converter _id para id para compatibilidade com frontend
-    return reservas.map(reserva => ({
+    return reservas.map((reserva) => ({
       ...reserva.toObject(),
-      id: reserva._id.toString()
+      id: reserva._id.toString(),
     }));
   }
 
-  async findById(id: string, options = {}): Promise<ReservaDocument> {
+  async findById(
+    id: string,
+    options: { session?: any } = {},
+  ): Promise<ReservaDocument> {
     const reserva = await this.reservaModel
       .findById(id)
       .sort({ createdAt: -1 })
       .populate('usuario')
+      .session(options.session || null)
       .exec();
 
     if (!reserva) {
@@ -70,11 +74,44 @@ export class ReservaRepository implements IReservaRepository {
     return reserva;
   }
 
-  async findByCodigoAndEmail(codigo: string, email: string): Promise<ReservaDocument> {
+  // Usado pela rota pública GET /reservas/codigo/:codigo (tela de retorno do
+  // checkout do Asaas, onde só temos o código, sem o e-mail do hóspede). O
+  // código é sequencial e adivinhável (RES1001, RES1002...), então essa
+  // consulta NUNCA pode devolver dados do hóspede (nome, e-mail, CPF,
+  // telefone, endereço) nem o documento `usuario` populado — só o resumo
+  // que a tela de sucesso de pagamento realmente exibe.
+  async findByCodigoPublico(codigo: string): Promise<Partial<Reserva>> {
     const reserva = await this.reservaModel
-      .findOne({ 
+      .findOne(
+        { codigo },
+        {
+          codigo: 1,
+          tipo: 1,
+          dataInicio: 1,
+          dataFim: 1,
+          valorTotal: 1,
+          statusReserva: 1,
+        },
+      )
+      .lean()
+      .exec();
+
+    if (!reserva) {
+      throw new NotFoundException(
+        `Reserva com código "${codigo}" não encontrada`,
+      );
+    }
+    return reserva;
+  }
+
+  async findByCodigoAndEmail(
+    codigo: string,
+    email: string,
+  ): Promise<ReservaDocument> {
+    const reserva = await this.reservaModel
+      .findOne({
         codigo,
-        usuarioEmail: email 
+        usuarioEmail: email,
       })
       .populate('usuario')
       .populate('pagamento')
@@ -95,9 +132,12 @@ export class ReservaRepository implements IReservaRepository {
     return this.reservaModel.find(data).populate('usuario').exec();
   }
 
-  createReserva(data: Partial<Reserva>, options = {}): Promise<Reserva> {
-    const reserva = new this.reservaModel(data, options);
-    return reserva.save();
+  createReserva(
+    data: Partial<Reserva>,
+    options: { session?: any } = {},
+  ): Promise<Reserva> {
+    const reserva = new this.reservaModel(data);
+    return reserva.save({ session: options.session });
   }
 
   cancelReserva(
@@ -126,7 +166,7 @@ export class ReservaRepository implements IReservaRepository {
   ): Promise<ReservaDocument | null> {
     return this.reservaModel.findOne({ pagamento: pagamentoId }).exec();
   }
-  
+
   // Método para atualizar o status de uma reserva
   async atualizarStatus(
     reservaId: string,
@@ -195,11 +235,11 @@ export class ReservaRepository implements IReservaRepository {
       .find({ statusReserva: 'CONFIRMADA' })
       .select('dataInicio dataFim tipo')
       .exec();
-    
+
     // Converter _id para id para compatibilidade com frontend
-    return reservas.map(reserva => ({
+    return reservas.map((reserva) => ({
       ...reserva.toObject(),
-      id: reserva._id.toString()
+      id: reserva._id.toString(),
     }));
   }
 }

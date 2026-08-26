@@ -13,7 +13,11 @@ export enum StatusParcela {
 
 @Schema({ timestamps: true })
 export class Parcela {
-  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Pagamento' })
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Pagamento',
+  })
   pagamentoId: MongooseSchema.Types.ObjectId;
 
   @Prop({ required: true })
@@ -28,10 +32,10 @@ export class Parcela {
   @Prop({ type: Date })
   dataPagamento: Date;
 
-  @Prop({ 
-    required: true, 
-    enum: StatusParcela, 
-    default: StatusParcela.PENDENTE 
+  @Prop({
+    required: true,
+    enum: StatusParcela,
+    default: StatusParcela.PENDENTE,
   })
   status: StatusParcela;
 

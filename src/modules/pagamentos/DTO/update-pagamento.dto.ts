@@ -1,5 +1,13 @@
 // src/domains/pagamentos/dto/update-pagamento.dto.ts
-import { IsOptional, IsNumber, IsString, IsEnum, IsDate, Min, IsUrl } from '@nestjs/class-validator';
+import {
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsEnum,
+  IsDate,
+  Min,
+  IsUrl,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { StatusPagamento } from '../pagamento.enums';
 

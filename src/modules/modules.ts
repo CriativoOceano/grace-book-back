@@ -19,6 +19,15 @@ import { PagamentoRepository } from './pagamentos/repositories/pagamento.reposit
 import { CalculoReservaService } from './shared/services/reservaProcesso/calcular-reserva.service';
 import { configuracoesRepositoryProvider } from './configuracoes/repositories/configuracaoes-repository.provider';
 import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
+import {
+  ReservaHold,
+  ReservaHoldSchema,
+} from 'src/schemas/reserva-hold.schema';
+import { DisponibilidadeModule } from './disponibilidade/disponibilidade.module';
+import {
+  PrecoSazonal,
+  PrecoSazonalSchema,
+} from 'src/schemas/preco-sazonal.schema';
 
 @Module({
   imports: [
@@ -27,32 +36,36 @@ import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
     EmailsModule,
     AuthModule,
     HttpModule,
+    DisponibilidadeModule,
     MongooseModule.forFeature([
       { name: Reserva.name, schema: ReservaSchema },
       { name: Pagamento.name, schema: PagamentoSchema },
       { name: Usuario.name, schema: UsuarioSchema },
-      { name: Configuracao.name, schema: ConfiguracaoSchema }
+      { name: Configuracao.name, schema: ConfiguracaoSchema },
+      { name: ReservaHold.name, schema: ReservaHoldSchema },
+      { name: PrecoSazonal.name, schema: PrecoSazonalSchema },
     ]),
   ],
   providers: [
     ReservaRepository,
     PagamentoRepository,
-    
+
     pagamentoRepositoryProvider,
     reservaRepositoryProvider,
     configuracoesRepositoryProvider,
-  
+
     UsuariosService,
     ConfigService,
     PagamentosService,
     ReservaProcessoService,
-    CalculoReservaService
+    CalculoReservaService,
   ],
   exports: [
     MongooseModule,
     HttpModule,
     EmailsModule,
-    
+    DisponibilidadeModule,
+
     ReservaRepository,
     PagamentoRepository,
 
@@ -70,7 +83,9 @@ import { Configuracao, ConfiguracaoSchema } from 'src/schemas/config.schema';
       { name: Reserva.name, schema: ReservaSchema },
       { name: Pagamento.name, schema: PagamentoSchema },
       { name: Usuario.name, schema: UsuarioSchema },
-      { name: Configuracao.name, schema: ConfiguracaoSchema }
+      { name: Configuracao.name, schema: ConfiguracaoSchema },
+      { name: ReservaHold.name, schema: ReservaHoldSchema },
+      { name: PrecoSazonal.name, schema: PrecoSazonalSchema },
     ]),
   ],
 })

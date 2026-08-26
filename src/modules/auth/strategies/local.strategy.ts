@@ -7,9 +7,9 @@ import { AuthService } from '../auth.service';
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
   constructor(private authService: AuthService) {
-    super({ 
+    super({
       usernameField: 'identificador', // Confirme que este campo corresponde ao seu frontend
-      passwordField: 'password' // Confirme que este campo corresponde ao seu frontend
+      passwordField: 'password', // Confirme que este campo corresponde ao seu frontend
     });
   }
 

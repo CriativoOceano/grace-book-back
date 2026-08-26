@@ -1,4 +1,13 @@
-import { IsDate, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUrl, Min } from '@nestjs/class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ModoPagamento, StatusPagamento } from '../pagamento.enums';
 
