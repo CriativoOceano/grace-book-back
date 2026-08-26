@@ -1584,7 +1584,10 @@ export class PagamentosService {
           'ID do parcelamento ASAAS não encontrado',
         );
       }
-      return `/v3/installments/${pagamento.asaasInstallmentId}/refund`;
+      // this.apiUrl (ASAAS_API_URL) já termina em /v3 — não prefixar de novo
+      // aqui, senão a URL final vira /v3/v3/... e o Asaas devolve 404 pra
+      // qualquer ID, mesmo um correto.
+      return `/installments/${pagamento.asaasInstallmentId}/refund`;
     }
 
     // Se for cobrança simples (PIX, cartão à vista, boleto).
@@ -1604,7 +1607,9 @@ export class PagamentosService {
         'ID do pagamento ASAAS (asaasPaymentId) não encontrado — não é possível estornar sem ele.',
       );
     }
-    return `/v3/payments/${pagamento.asaasPaymentId}/refund`;
+    // this.apiUrl (ASAAS_API_URL) já termina em /v3 — mesmo cuidado do
+    // ramo de parcelamento acima.
+    return `/payments/${pagamento.asaasPaymentId}/refund`;
   }
 
   /**
